@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="dashboard-grid">
+    <!-- KPI Cards -->
+    <div class="card kpi-card">
+        <div class="icon-box warning">
+            <span class="material-icons-round">battery_alert</span>
+        </div>
+        <div class="kpi-info">
+            <h3>Health Score</h3>
+            <div class="value">{{ stats.health_score }}%</div>
+            <span class="status warning">Needs Attention</span>
+        </div>
+        <div class="progress-ring" :style="`--value:${stats.health_score}`"></div>
+    </div>
+
+    <div class="card kpi-card">
+        <div class="icon-box primary">
+            <span class="material-icons-round">hourglass_bottom</span>
+        </div>
+        <div class="kpi-info">
+            <h3>RUL Estimate</h3>
+            <div class="value">{{ stats.remaining_useful_life }}</div>
+            <span class="status good">On Track</span>
+        </div>
+    </div>
+
+    <div class="card kpi-card">
+        <div class="icon-box success">
+            <span class="material-icons-round">electric_bolt</span>
+        </div>
+        <div class="kpi-info">
+            <h3>Efficiency</h3>
+            <div class="value">{{ stats.efficiency }}%</div>
+            <span class="status good">+2% this week</span>
+        </div>
+    </div>
+
+    <!-- Main Chart -->
+    <div class="card chart-card">
+        <div class="card-header">
+            <h2>Degradation Forecast</h2>
+            <div class="legend">
+                <span class="dot actual"></span> Actual
+                <span class="dot predicted"></span> Predicted
+            </div>
+        </div>
+        <div class="chart-container">
+            <canvas id="degradationChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Recommendations -->
+    <div class="card reco-card">
+        <div class="card-header">
+            <h2>Smart Recommendations</h2>
+        </div>
+        <div class="reco-list">
+            {% for reco in recommendations %}
+            <div class="reco-item priority-{{ reco.severity }}">
+                <div class="reco-icon">
+                    <span class="material-icons-round">
+                        {% if reco.severity == 'high' %}error
+                        {% elif reco.severity == 'medium' %}warning
+                        {% else %}check_circle{% endif %}
+                    </span>
+                </div>
+                <div class="reco-content">
+                    <h4>{{ reco.title }}</h4>
+                    <p>{{ reco.description }}</p>
+                </div>
+                <button class="action-btn">Action</button>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}
