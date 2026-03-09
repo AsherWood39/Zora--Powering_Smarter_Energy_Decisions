@@ -5,6 +5,7 @@ yarn-error.log
 
 # VS Code
 .vscode/
+data_planning.md
 
 # Brain/Artifacts (Agent)
 .gemini/
