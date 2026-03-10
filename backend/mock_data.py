@@ -1,42 +1,156 @@
+import os
+import json
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
+from groq import Groq
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Initialize Groq client
+_groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 def get_battery_stats():
     """
     Returns current battery status and KPI metrics.
+    ⚡ Day 4: Replace these hardcoded values with real model predictions.
     """
     return {
-        "health_score": 87,  # Percentage
+        "health_score": 87,  # Percentage — replace with SoH from model
         "health_status": "Good",
-        "remaining_useful_life": "3.5 Years",
-        "current_capacity": 48.5, # kWh
-        "original_capacity": 55.0, # kWh
+        "remaining_useful_life": "3.5 Years",  # replace with RUL from model
+        "current_capacity": 48.5,  # kWh
+        "original_capacity": 55.0,  # kWh
         "total_cycles": 420,
-        "efficiency": 92, # Percentage
+        "efficiency": 92,  # Percentage
     }
 
-def get_recommendations():
+
+def get_recommendations(battery_data=None):
     """
-    Returns a list of actionable recommendations based on 'analysis'.
+    Returns AI-powered recommendations using Groq LLM.
+
+    Args:
+        battery_data (dict, optional): Real battery metrics from ML model.
+            Expected keys: soh, rul, regime, temperature, battery_id, total_cycles
+
+            ⚡ Day 4 usage:
+                get_recommendations({
+                    "battery_id": "B0005",
+                    "soh": 79.3,
+                    "rul": 34,
+                    "regime": "Accelerated",
+                    "temperature": 24.0,
+                    "total_cycles": 420
+                })
+
+    Returns:
+        list: A list of 3 recommendation dicts with keys: id, title, description, severity
     """
+
+    # --- Mock data used until Day 4 real model is wired in ---
+    if battery_data is None:
+        battery_data = {
+            "battery_id": "B0005",
+            "soh": 87.0,          # State of Health %
+            "rul": 45,            # Remaining Useful Life in cycles
+            "regime": "Normal",   # Normal / Accelerated / Anomalous
+            "temperature": 24.0,  # °C ambient temperature
+            "total_cycles": 420,
+        }
+
+    # Build a clear prompt with the battery's actual condition
+    prompt = f"""You are an expert battery health analyst for an EV fleet management system.
+
+A battery named {battery_data.get('battery_id', 'Unknown')} has the following metrics:
+- State of Health (SoH): {battery_data.get('soh', 'N/A')}%
+- Remaining Useful Life (RUL): {battery_data.get('rul', 'N/A')} cycles
+- Operating Regime: {battery_data.get('regime', 'N/A')} (Normal / Accelerated / Anomalous)
+- Ambient Temperature: {battery_data.get('temperature', 'N/A')}°C
+- Total Cycles Completed: {battery_data.get('total_cycles', 'N/A')}
+
+Based on this data, provide exactly 3 specific, actionable maintenance recommendations.
+
+Respond ONLY with a valid JSON array in this exact format (no extra text, no markdown):
+[
+  {{
+    "id": 1,
+    "title": "Short title here",
+    "description": "One or two sentence explanation with specific advice.",
+    "severity": "high"
+  }},
+  {{
+    "id": 2,
+    "title": "Short title here",
+    "description": "One or two sentence explanation with specific advice.",
+    "severity": "medium"
+  }},
+  {{
+    "id": 3,
+    "title": "Short title here",
+    "description": "One or two sentence explanation with specific advice.",
+    "severity": "low"
+  }}
+]
+
+Severity must be exactly one of: "high", "medium", or "low".
+Base your recommendations on the actual battery condition above."""
+
+    try:
+        response = _groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",  # Current supported Groq model
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a battery health expert. Always respond with valid JSON only, no markdown."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.4,   # Low temp = consistent, factual responses
+            max_tokens=600,
+        )
+
+        raw = response.choices[0].message.content.strip()
+
+        # Clean up any accidental markdown code fences
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        raw = raw.strip()
+
+        recommendations = json.loads(raw)
+
+        # Validate structure
+        if isinstance(recommendations, list) and len(recommendations) > 0:
+            return recommendations
+
+    except Exception as e:
+        print(f"[Groq API Error] {e} — falling back to static recommendations")
+
+    # Fallback if Groq fails for any reason
     return [
         {
             "id": 1,
-            "title": "Reduce Fast Charging Frequency",
-            "description": "Frequent DC fast charging has contributed to a 2% capacity drop this month. Limit fast charging to emergency use only.",
+            "title": "Check Battery Health",
+            "description": "SoH is below optimal. Schedule a detailed battery inspection.",
             "severity": "high"
         },
         {
             "id": 2,
-            "title": "Avoid Deep Discharges",
-            "description": "Battery often drops below 10%. Try to recharge before it hits 15% to prolong cell life.",
+            "title": "Monitor Charge Cycles",
+            "description": "Avoid deep discharges to extend remaining useful life.",
             "severity": "medium"
         },
         {
             "id": 3,
-            "title": "Optimal Temperature Range",
-            "description": "Operating temperature has been optimal (20-25°C) for the last 5 charge cycles. Keep it up!",
+            "title": "Temperature Management",
+            "description": "Keep operating temperature between 20–25°C for best performance.",
             "severity": "low"
         }
     ]
