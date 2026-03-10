@@ -155,6 +155,138 @@ Base your recommendations on the actual battery condition above."""
         }
     ]
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STUB DATA — Powers the new Day 2 routes. Replace with real model on Day 4.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Mock fleet: 8 batteries with realistic degradation values
+_MOCK_FLEET = [
+    {"battery_id": "B0018", "soh": 65.2, "rul": 12, "regime": "Anomalous",   "temperature": 24.0, "total_cycles": 616},
+    {"battery_id": "B0005", "soh": 78.9, "rul": 34, "regime": "Accelerated", "temperature": 24.0, "total_cycles": 548},
+    {"battery_id": "B0047", "soh": 80.1, "rul": 38, "regime": "Accelerated", "temperature":  4.0, "total_cycles": 132},
+    {"battery_id": "B0048", "soh": 82.4, "rul": 43, "regime": "Normal",      "temperature":  4.0, "total_cycles": 128},
+    {"battery_id": "B0045", "soh": 84.7, "rul": 51, "regime": "Normal",      "temperature":  4.0, "total_cycles": 168},
+    {"battery_id": "B0046", "soh": 86.3, "rul": 55, "regime": "Normal",      "temperature":  4.0, "total_cycles": 146},
+    {"battery_id": "B0006", "soh": 89.5, "rul": 62, "regime": "Normal",      "temperature": 24.0, "total_cycles": 492},
+    {"battery_id": "B0007", "soh": 93.1, "rul": 79, "regime": "Normal",      "temperature": 24.0, "total_cycles": 468},
+]
+
+def _get_status_color(soh):
+    """Returns status based on SoH thresholds."""
+    if soh < 75:
+        return "critical"   # 🔴
+    elif soh < 86:
+        return "warning"    # 🟡
+    else:
+        return "good"       # 🟢
+
+
+def get_fleet_triage():
+    """
+    Returns all batteries ranked by urgency (lowest SoH first).
+    ⚡ Day 4: Loop all batteries, run real model predictions, sort by SoH.
+    """
+    fleet = []
+    for b in _MOCK_FLEET:
+        fleet.append({
+            **b,
+            "status": _get_status_color(b["soh"]),
+            "rul_months": round(b["rul"] / 14, 1),  # ~14 cycles/month estimate
+        })
+    # Already sorted by urgency in _MOCK_FLEET (lowest SoH first)
+    return fleet
+
+
+def get_battery_health(battery_id):
+    """
+    Returns health details for a specific battery.
+    ⚡ Day 4: Load battery's row from features.csv, run soh/rul/regime models.
+
+    Args:
+        battery_id (str): e.g. "B0005"
+
+    Returns:
+        dict with soh, rul, regime, temperature, status, soh_history (for chart)
+    """
+    # Find battery in mock fleet
+    battery = next((b for b in _MOCK_FLEET if b["battery_id"] == battery_id), None)
+
+    if battery is None:
+        return None
+
+    # Generate a mock SoH degradation history (last 50 cycles)
+    np.random.seed(hash(battery_id) % 1000)  # Consistent per battery
+    start_soh = min(battery["soh"] + 15, 100)
+    soh_history = []
+    current = start_soh
+    for i in range(50):
+        drop = 0.25 + np.random.uniform(-0.05, 0.1)
+        current -= drop
+        soh_history.append(round(current, 2))
+
+    # Generate mock regime history (for the timeline bar)
+    regime_history = []
+    for i, soh in enumerate(soh_history):
+        if soh > 88:
+            regime_history.append("Normal")
+        elif soh > 78:
+            regime_history.append("Accelerated")
+        else:
+            regime_history.append("Anomalous")
+
+    return {
+        **battery,
+        "status": _get_status_color(battery["soh"]),
+        "rul_months": round(battery["rul"] / 14, 1),
+        "soh_history": soh_history,
+        "regime_history": regime_history,
+        "cycle_labels": [f"Cycle {battery['total_cycles'] - 49 + i}" for i in range(50)],
+    }
+
+
+def simulate_temperature(battery_id, temp):
+    """
+    Returns temperature-adjusted RUL for a battery.
+    ⚡ Day 4: Adjust thermal_factor feature and re-run real RUL model.
+
+    Args:
+        battery_id (str): e.g. "B0005"
+        temp (float): Simulated temperature in °C
+
+    Returns:
+        dict with adjusted_rul, adjusted_rul_months, temp_impact_pct
+    """
+    battery = next((b for b in _MOCK_FLEET if b["battery_id"] == battery_id), None)
+
+    if battery is None:
+        return None
+
+    base_rul = battery["rul"]
+    base_temp = battery["temperature"]
+
+    # Simple thermal degradation formula (temp penalty grows away from 24°C)
+    delta = abs(temp - 24)
+    if temp < 24:
+        # Cold accelerates degradation more than heat in this dataset
+        penalty = delta * 0.018
+    else:
+        penalty = delta * 0.010
+
+    factor = max(0.3, 1.0 - penalty)
+    adjusted_rul = round(base_rul * factor)
+    impact_pct = round((1 - factor) * 100, 1)
+
+    return {
+        "battery_id": battery_id,
+        "base_rul": base_rul,
+        "temperature": temp,
+        "adjusted_rul": adjusted_rul,
+        "adjusted_rul_months": round(adjusted_rul / 14, 1),
+        "temp_impact_pct": impact_pct,
+    }
+
+
 def get_degradation_chart_data():
     """
     Generates mock historical and predictive degradation data.
