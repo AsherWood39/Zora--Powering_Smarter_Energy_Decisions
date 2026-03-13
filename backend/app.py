@@ -7,6 +7,7 @@ from mock_data import (
     get_fleet_triage,
     get_battery_health,
     simulate_temperature,
+    get_most_critical_battery_id,
 )
 
 app = Flask(__name__)
@@ -16,8 +17,10 @@ CORS(app)
 
 @app.route('/api/dashboard')
 def dashboard_data():
-    stats = get_battery_stats()
-    recommendations = get_recommendations()
+    # Automatically orient the dashboard to the battery needing most attention
+    default_id = get_most_critical_battery_id()
+    stats = get_battery_stats(default_id)
+    recommendations = get_recommendations() # internally handles defaulting
     return jsonify({
         'stats': stats,
         'recommendations': recommendations
@@ -25,7 +28,8 @@ def dashboard_data():
 
 @app.route('/api/data')
 def api_data():
-    chart_data = get_chart_payload()
+    default_id = get_most_critical_battery_id()
+    chart_data = get_chart_payload(default_id)
     return jsonify(chart_data)
 
 # ── New Day 2 routes ───────────────────────────────────────────────────────────

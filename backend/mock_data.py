@@ -51,23 +51,25 @@ def get_battery_stats(battery_id="B0005"):
             "efficiency": 92,
         }
 
-    # Get latest cycle for this battery
-    latest = df[df['battery_id'] == battery_id].iloc[-1]
+    # Sort by cycle to ensure iloc[-1] is actually the latest
+    battery_df = df[df['battery_id'] == battery_id].sort_values('cycle_number')
+    latest = battery_df.iloc[-1]
     
     # Run real prediction
     pred = _predictor.predict(latest.to_dict())
     soh = pred["predictions"].get("soh", {}).get("value_percent", 87)
-    rul = pred["predictions"].get("rul", {}).get("value_cycles", 45)
+    rul = pred["predictions"].get("rul", {}).get("value_cycles")
     
     return {
         "battery_id": battery_id,
         "health_score": round(soh, 1),
         "health_status": "Critical" if soh < 75 else ("Warning" if soh < 86 else "Good"),
-        "remaining_useful_life": f"{round(rul / 14, 1)} Months",  # Est. 14 cycles/month
+        "remaining_useful_life": f"{round(rul / 14, 1)} Months" if rul else "Calculating...",
         "current_capacity": round(latest['Capacity'], 2),
         "original_capacity": round(latest['meta_rated_cap'], 2),
         "total_cycles": int(latest['cycle_number']),
         "efficiency": int(latest['capacity_rel'] * 100),
+        "temperature": 24.0, # Ambient lab temp
     }
 
 
@@ -97,9 +99,9 @@ def get_recommendations(battery_data=None):
     if battery_data is None:
         df = _get_data()
         if not df.empty:
-            # Use B0005 latest as the "Real Default"
-            bid = "B0005"
-            latest = df[df['battery_id'] == bid].iloc[-1]
+            # Use the most critical battery as the "Real Default"
+            bid = get_most_critical_battery_id()
+            latest = df[df['battery_id'] == bid].sort_values('cycle_number').iloc[-1]
             pred = _predictor.predict(latest.to_dict())
             battery_data = {
                 "battery_id": bid,
@@ -254,7 +256,13 @@ def get_fleet_triage():
     unique_ids = df['battery_id'].unique()
     
     for bid in unique_ids:
-        latest = df[df['battery_id'] == bid].iloc[-1]
+        # Hot-reload models if they were missing during startup
+        if _predictor.rul_bundle is None or _predictor.triage_rules is None:
+            _predictor.__init__()
+
+        # Sort history to get the TRUE latest cycle
+        battery_df = df[df['battery_id'] == bid].sort_values('cycle_number')
+        latest = battery_df.iloc[-1]
         
         # Predict
         pred = _predictor.predict(latest.to_dict())
@@ -265,15 +273,23 @@ def get_fleet_triage():
             fleet.append({
                 "battery_id": bid,
                 "soh": soh,
-                "rul": rul if rul else 0,
+                "rul": int(rul) if rul else 0, # Frontend expects number
                 "status": "critical" if soh < 75 else ("warning" if soh < 86 else "good"),
-                "rul_months": round(rul / 14, 1) if rul else 0,
+                "rul_months": round(rul / 14, 1) if rul else "Calculating...",
                 "total_cycles": int(latest['cycle_number']),
-                "regime": pred["predictions"].get("degradation_regime", "Normal 🟢")
+                "temperature": 24.0, # Lab ambient
+                "regime": pred["predictions"].get("degradation_regime", "Calibrating... ⏳")
             })
             
     # Sort by urgency (lowest SoH first)
     return sorted(fleet, key=lambda x: x['soh'])
+
+def get_most_critical_battery_id():
+    """Helper to find the battery that needs attention most."""
+    fleet = get_fleet_triage()
+    if not fleet:
+        return "B0005"
+    return fleet[0]["battery_id"]
 
 
 def get_battery_health(battery_id):
@@ -318,23 +334,19 @@ def get_battery_health(battery_id):
 
 def simulate_temperature(battery_id, temp):
     """
-    Returns temperature-adjusted RUL for a battery.
-    ⚡ Day 4: Adjust thermal_factor feature and re-run real RUL model.
-
-    Args:
-        battery_id (str): e.g. "B0005"
-        temp (float): Simulated temperature in °C
-
-    Returns:
-        dict with adjusted_rul, adjusted_rul_months, temp_impact_pct
+    Returns temperature-adjusted RUL for a battery based on real model values.
     """
-    battery = next((b for b in _MOCK_FLEET if b["battery_id"] == battery_id), None)
-
-    if battery is None:
+    df = _get_data()
+    if df.empty or battery_id not in df['battery_id'].unique():
         return None
 
-    base_rul = battery["rul"]
-    base_temp = battery["temperature"]
+    # Get latest data
+    battery_df = df[df['battery_id'] == battery_id].sort_values('cycle_number')
+    latest = battery_df.iloc[-1]
+    
+    # Get base RUL from predictor
+    pred = _predictor.predict(latest.to_dict())
+    base_rul = pred["predictions"].get("rul", {}).get("value_cycles", 45)
 
     # Simple thermal degradation formula (temp penalty grows away from 24°C)
     delta = abs(temp - 24)
@@ -410,7 +422,7 @@ def get_degradation_chart_data():
          # To connect them, the 180th point (index 179) should probably be the start.
     }
 
-def get_chart_payload(battery_id="B0005"):
+def get_chart_payload(battery_id):
     """
     Returns real historical data and predictive trend for the dashboard chart.
     """

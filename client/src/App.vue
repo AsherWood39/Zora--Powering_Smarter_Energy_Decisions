@@ -14,9 +14,9 @@
           <span class="material-icons-round">directions_car</span>
           Fleet
         </a>
-        <a href="#" @click.prevent>
+        <a href="#" :class="{ active: currentView === 'model-info' }" @click.prevent="currentView = 'model-info'; selectedBattery = null">
           <span class="material-icons-round">analytics</span>
-          Analytics
+          About Model
         </a>
         <a href="#" @click.prevent>
           <span class="material-icons-round">settings</span>
@@ -38,6 +38,7 @@
           <span>Dashboards</span>
           <template v-if="currentView === 'dashboard'"> / <span class="current">Battery Health Overview</span></template>
           <template v-else-if="currentView === 'fleet'"> / <span class="current">Fleet Triage</span></template>
+          <template v-else-if="currentView === 'model-info'"> / <span class="current">About the Model</span></template>
           <template v-else-if="currentView === 'detail'"> / <span @click="currentView='fleet'; selectedBattery=null" class="breadcrumb-link">Fleet Triage</span> / <span class="current">{{ selectedBattery }}</span></template>
         </div>
         <div class="actions">
@@ -54,6 +55,11 @@
           <!-- Fleet Triage view -->
           <div v-else-if="currentView === 'fleet'" key="fleet" class="view-card">
             <FleetTriage @select-battery="openBattery" />
+          </div>
+
+          <!-- Model Info view -->
+          <div v-else-if="currentView === 'model-info'" key="model-info" class="view-card">
+            <ModelInfo />
           </div>
 
           <!-- Battery Detail view -->
@@ -74,6 +80,7 @@ import { ref } from 'vue';
 import Dashboard    from './components/Dashboard.vue';
 import FleetTriage  from './components/FleetTriage.vue';
 import BatteryDetail from './components/BatteryDetail.vue';
+import ModelInfo     from './components/ModelInfo.vue';
 
 const currentView    = ref('dashboard');
 const selectedBattery = ref(null);
