@@ -5,6 +5,29 @@ import numpy as np
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from groq import Groq
+from ml.predict import ZoraPredictor
+
+# --- REAL ML INTEGRATION ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FEATS_PATH = os.path.join(BASE_DIR, "ml/results/final_features.csv")
+TRIAGE_RULES_PATH = os.path.join(BASE_DIR, "ml/results/fleet_triage_rules.json")
+
+# Initialize real-time components
+_predictor = ZoraPredictor()
+_cached_df = None
+
+def _get_data():
+    """Lazy loader for the feature dataset."""
+    global _cached_df
+    if _cached_df is None:
+        if os.path.exists(FEATS_PATH):
+            _cached_df = pd.read_csv(FEATS_PATH)
+        else:
+            print(f"Warning: {FEATS_PATH} does not exist yet. Using empty DataFrame.")
+            _cached_df = pd.DataFrame()
+    return _cached_df
+
+# ---------------------------
 
 # Load environment variables from .env file
 load_dotenv()
@@ -12,19 +35,39 @@ load_dotenv()
 # Initialize Groq client
 _groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
-def get_battery_stats():
+def get_battery_stats(battery_id="B0005"):
     """
-    Returns current battery status and KPI metrics.
-    ⚡ Day 4: Replace these hardcoded values with real model predictions.
+    Returns current battery status and KPI metrics using real ML predictions.
     """
+    df = _get_data()
+    if df.empty or battery_id not in df['battery_id'].unique():
+        return {
+            "health_score": 87,
+            "health_status": "Mock (Data Missing)",
+            "remaining_useful_life": "3.5 Years",
+            "current_capacity": 48.5,
+            "original_capacity": 55.0,
+            "total_cycles": 420,
+            "efficiency": 92,
+        }
+
+    # Get latest cycle for this battery
+    latest = df[df['battery_id'] == battery_id].iloc[-1]
+    
+    # Run real prediction
+    pred = _predictor.predict(latest.to_dict())
+    soh = pred["predictions"].get("soh", {}).get("value_percent", 87)
+    rul = pred["predictions"].get("rul", {}).get("value_cycles", 45)
+    
     return {
-        "health_score": 87,  # Percentage — replace with SoH from model
-        "health_status": "Good",
-        "remaining_useful_life": "3.5 Years",  # replace with RUL from model
-        "current_capacity": 48.5,  # kWh
-        "original_capacity": 55.0,  # kWh
-        "total_cycles": 420,
-        "efficiency": 92,  # Percentage
+        "battery_id": battery_id,
+        "health_score": round(soh, 1),
+        "health_status": "Critical" if soh < 75 else ("Warning" if soh < 86 else "Good"),
+        "remaining_useful_life": f"{round(rul / 14, 1)} Months",  # Est. 14 cycles/month
+        "current_capacity": round(latest['Capacity'], 2),
+        "original_capacity": round(latest['meta_rated_cap'], 2),
+        "total_cycles": int(latest['cycle_number']),
+        "efficiency": int(latest['capacity_rel'] * 100),
     }
 
 
@@ -50,16 +93,31 @@ def get_recommendations(battery_data=None):
         list: A list of 3 recommendation dicts with keys: id, title, description, severity
     """
 
-    # --- Mock data used until Day 4 real model is wired in ---
+    # --- Real-aware defaults if no data is provided ---
     if battery_data is None:
-        battery_data = {
-            "battery_id": "B0005",
-            "soh": 87.0,          # State of Health %
-            "rul": 45,            # Remaining Useful Life in cycles
-            "regime": "Normal",   # Normal / Accelerated / Anomalous
-            "temperature": 24.0,  # °C ambient temperature
-            "total_cycles": 420,
-        }
+        df = _get_data()
+        if not df.empty:
+            # Use B0005 latest as the "Real Default"
+            bid = "B0005"
+            latest = df[df['battery_id'] == bid].iloc[-1]
+            pred = _predictor.predict(latest.to_dict())
+            battery_data = {
+                "battery_id": bid,
+                "soh": round(pred["predictions"].get("soh", {}).get("value_percent", 87), 1),
+                "rul": int(pred["predictions"].get("rul", {}).get("value_cycles", 45)),
+                "regime": pred["predictions"].get("degradation_regime", "Normal 🟢"),
+                "temperature": 24.0,
+                "total_cycles": int(latest['cycle_number']),
+            }
+        else:
+            battery_data = {
+                "battery_id": "B0005",
+                "soh": 87.0,
+                "rul": 45,
+                "regime": "Normal",
+                "temperature": 24.0,
+                "total_cycles": 420,
+            }
 
     # Build a clear prompt with the battery's actual condition
     prompt = f"""You are an expert battery health analyst for an EV fleet management system.
@@ -185,63 +243,76 @@ def _get_status_color(soh):
 def get_fleet_triage():
     """
     Returns all batteries ranked by urgency (lowest SoH first).
-    ⚡ Day 4: Loop all batteries, run real model predictions, sort by SoH.
+    Uses real dataset features and ML prediction bundles.
     """
+    df = _get_data()
+    if df.empty:
+        return []
+
+    # Get latest cycle for every unique battery
     fleet = []
-    for b in _MOCK_FLEET:
-        fleet.append({
-            **b,
-            "status": _get_status_color(b["soh"]),
-            "rul_months": round(b["rul"] / 14, 1),  # ~14 cycles/month estimate
-        })
-    # Already sorted by urgency in _MOCK_FLEET (lowest SoH first)
-    return fleet
+    unique_ids = df['battery_id'].unique()
+    
+    for bid in unique_ids:
+        latest = df[df['battery_id'] == bid].iloc[-1]
+        
+        # Predict
+        pred = _predictor.predict(latest.to_dict())
+        soh = pred["predictions"].get("soh", {}).get("value_percent")
+        rul = pred["predictions"].get("rul", {}).get("value_cycles")
+        
+        if soh is not None:
+            fleet.append({
+                "battery_id": bid,
+                "soh": soh,
+                "rul": rul if rul else 0,
+                "status": "critical" if soh < 75 else ("warning" if soh < 86 else "good"),
+                "rul_months": round(rul / 14, 1) if rul else 0,
+                "total_cycles": int(latest['cycle_number']),
+                "regime": pred["predictions"].get("degradation_regime", "Normal 🟢")
+            })
+            
+    # Sort by urgency (lowest SoH first)
+    return sorted(fleet, key=lambda x: x['soh'])
 
 
 def get_battery_health(battery_id):
     """
-    Returns health details for a specific battery.
-    ⚡ Day 4: Load battery's row from features.csv, run soh/rul/regime models.
-
-    Args:
-        battery_id (str): e.g. "B0005"
-
-    Returns:
-        dict with soh, rul, regime, temperature, status, soh_history (for chart)
+    Returns health details for a specific battery using REAL historical data.
     """
-    # Find battery in mock fleet
-    battery = next((b for b in _MOCK_FLEET if b["battery_id"] == battery_id), None)
-
-    if battery is None:
+    df = _get_data()
+    if df.empty or battery_id not in df['battery_id'].unique():
         return None
 
-    # Generate a mock SoH degradation history (last 50 cycles)
-    np.random.seed(hash(battery_id) % 1000)  # Consistent per battery
-    start_soh = min(battery["soh"] + 15, 100)
-    soh_history = []
-    current = start_soh
-    for i in range(50):
-        drop = 0.25 + np.random.uniform(-0.05, 0.1)
-        current -= drop
-        soh_history.append(round(current, 2))
-
-    # Generate mock regime history (for the timeline bar)
+    battery_df = df[df['battery_id'] == battery_id].sort_values('cycle_number')
+    latest = battery_df.iloc[-1]
+    
+    # Predict current state
+    pred = _predictor.predict(latest.to_dict())
+    soh = pred["predictions"].get("soh", {}).get("value_percent", 0)
+    
+    # Generate REAL SoH history for the last 50 cycles (or all available)
+    history_view = battery_df.tail(50)
+    soh_history = history_view['SoH_Global'].round(2).tolist()
+    
+    # Construct regime history (based on real labels for history)
     regime_history = []
-    for i, soh in enumerate(soh_history):
-        if soh > 88:
-            regime_history.append("Normal")
-        elif soh > 78:
-            regime_history.append("Accelerated")
-        else:
-            regime_history.append("Anomalous")
+    for s in soh_history:
+        if s > 88: regime_history.append("Normal")
+        elif s > 78: regime_history.append("Accelerated")
+        else: regime_history.append("Anomalous")
 
     return {
-        **battery,
-        "status": _get_status_color(battery["soh"]),
-        "rul_months": round(battery["rul"] / 14, 1),
+        "battery_id": battery_id,
+        "soh": soh,
+        "rul": pred["predictions"].get("rul", {}).get("value_cycles", 0),
+        "status": "critical" if soh < 75 else ("warning" if soh < 86 else "good"),
+        "rul_months": round(pred["predictions"].get("rul", {}).get("value_cycles", 0) / 14, 1),
+        "total_cycles": int(latest['cycle_number']),
+        "temperature": 24.0, # Dataset is generally ambient lab temp
         "soh_history": soh_history,
         "regime_history": regime_history,
-        "cycle_labels": [f"Cycle {battery['total_cycles'] - 49 + i}" for i in range(50)],
+        "cycle_labels": [f"Cycle {int(c)}" for c in history_view['cycle_number'].tolist()],
     }
 
 
@@ -339,65 +410,66 @@ def get_degradation_chart_data():
          # To connect them, the 180th point (index 179) should probably be the start.
     }
 
-def get_chart_payload():
+def get_chart_payload(battery_id="B0005"):
     """
-    Simpler structure for Chart.js
+    Returns real historical data and predictive trend for the dashboard chart.
     """
-    today = datetime.now()
-    labels = []
-    actual_data = []
-    predicted_data = []
+    df = _get_data()
+    if df.empty or battery_id not in df['battery_id'].unique():
+        # Fallback to mock-like structured data if dataset missing
+        return {
+            "labels": ["Day 1", "Day 2", "Today"],
+            "datasets": [
+                {"label": "Actual (Mock)", "data": [98, 97, 96], "borderColor": "#10b981", "fill": False},
+                {"label": "Predicted (Mock)", "data": [None, None, 96, 95], "borderColor": "#f59e0b", "borderDash": [5, 5], "fill": False}
+            ]
+        }
 
-    # 6 Months Past
-    current_health = 100.0
+    battery_df = df[df['battery_id'] == battery_id].sort_values('cycle_number')
     
-    # Create 6 months of past data
-    for i in range(180):
-        date = today - timedelta(days=(180 - i))
-        labels.append(date.strftime("%b %d"))
-        
-        # Simulate degradation
-        drop = 0.04 + np.random.uniform(-0.01, 0.02)
-        current_health -= drop
-        
-        actual_data.append(round(current_health, 2))
-        predicted_data.append(None) # No prediction for past
+    # 1. Historical Actual Data (Last 100 cycles)
+    history = battery_df.tail(100)
+    labels = [f"Cycle {int(c)}" for c in history['cycle_number']]
+    actual_data = history['SoH_Global'].round(2).tolist()
+    
+    # 2. Predicted Data
+    # Start the prediction dataset from the last actual point to connect them
+    predicted_data = [None] * (len(actual_data) - 1)
+    last_val = actual_data[-1]
+    predicted_data.append(last_val)
+    
+    # Simple linear forecast for the next 50 cycles
+    # Calc average fade from recent history
+    if len(actual_data) > 10:
+        recent = actual_data[-10:]
+        fade_per_cycle = (recent[0] - recent[-1]) / 10
+        if fade_per_cycle <= 0: fade_per_cycle = 0.05 # Fallback if slope 0
+    else:
+        fade_per_cycle = 0.05
 
-    # Current point (Anchor for both)
-    labels.append("Today")
-    actual_data.append(round(current_health, 2))
-    predicted_data.append(round(current_health, 2)) # Connect the lines
-
-    # 6 Months Future
-    future_health = current_health
-    for i in range(1, 180):
-        date = today + timedelta(days=i)
-        labels.append(date.strftime("%b %d"))
-        
-        # Simulate future degradation trend
-        drop = 0.05 # Steady decline
-        future_health -= drop
-        
+    for i in range(1, 51):
+        labels.append(f"Cycle {int(history['cycle_number'].iloc[-1] + i)}")
         actual_data.append(None)
-        predicted_data.append(round(future_health, 2))
+        last_val -= fade_per_cycle
+        predicted_data.append(round(max(0, last_val), 2))
 
     return {
         "labels": labels,
         "datasets": [
             {
-                "label": "Actual Battery Health (%)",
+                "label": "Historical Capacity",
                 "data": actual_data,
-                "borderColor": "#4CAF50", # Material Green
+                "borderColor": "#10b981",
                 "fill": False,
-                "tension": 0.3
+                "tension": 0.4
             },
             {
-                "label": "Predicted Health (%)",
+                "label": "Predicted Degradation",
                 "data": predicted_data,
-                "borderColor": "#FF5722", # Material Orange
+                "borderColor": "#f59e0b",
                 "borderDash": [5, 5],
                 "fill": False,
-                "tension": 0.3
+                "tension": 0.4
             }
         ]
     }
