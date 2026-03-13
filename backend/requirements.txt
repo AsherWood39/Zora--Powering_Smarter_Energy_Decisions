@@ -2,3 +2,9 @@ flask
 flask-cors
 pandas
 numpy
+matplotlib 
+scikit-learn 
+xgboost
+tqdm
+dotenv
+requests

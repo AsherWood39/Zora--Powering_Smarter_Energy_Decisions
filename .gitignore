@@ -6,6 +6,10 @@ yarn-error.log
 # VS Code
 .vscode/
 data_planning.md
+Zora-DOC.md
+progress_checklist.md
+results/
+Screenshot 2026-03-10 161521.png
 
 # Brain/Artifacts (Agent)
 .gemini/
