@@ -8,6 +8,9 @@ from groq import Groq
 import pickle
 from fpdf import FPDF
 import io
+import matplotlib
+matplotlib.use('Agg') # Use non-interactive backend
+import matplotlib.pyplot as plt
 
 # --- REAL ML INTEGRATION ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -183,6 +186,7 @@ def generate_pdf_report(battery_id):
     """
     stats = get_dashboard_stats(battery_id)
     recos = get_recommendations(stats)
+    chart_data = get_historical_data(battery_id)
     
     pdf = FPDF()
     pdf.add_page()
@@ -244,6 +248,38 @@ def generate_pdf_report(battery_id):
     pdf.cell(47.5, 8, 'Avg. Temperature:', 0, 0)
     pdf.set_font('Arial', 'B', 11)
     pdf.cell(47.5, 8, f'{stats["temperature"]} C', 0, 1)
+    
+    pdf.ln(10)
+
+    # Degradation Curve Visual
+    pdf.set_font('Arial', 'B', 14)
+    pdf.cell(0, 10, ' Health Degradation Trend (Actual vs Predicted)', 0, 1, 'L')
+    
+    plt.figure(figsize=(10, 4), dpi=100)
+    plt.style.use('dark_background')
+    
+    actual = [x for x in chart_data['datasets'][0]['data']]
+    pred = [x for x in chart_data['datasets'][1]['data']]
+    labels = chart_data['labels']
+    x_indices = range(len(labels))
+    
+    plt.plot(x_indices, actual, color='#10b981', linewidth=2.5, label='Historical SoH (%)')
+    plt.plot(x_indices, pred, color='#f59e0b', linestyle='--', linewidth=2.5, label='Predicted Trend')
+    
+    # Styling
+    plt.title(f'Diagnostic Timeline: Unit {battery_id}', color='white', pad=15, fontsize=12)
+    plt.ylabel('SoH %', color='#94a3b8')
+    plt.grid(True, alpha=0.1)
+    plt.legend(frameon=False, loc='lower left', fontsize=9)
+    
+    # Save to buffer
+    img_buf = io.BytesIO()
+    plt.savefig(img_buf, format='png', bbox_inches='tight', transparent=True)
+    img_buf.seek(0)
+    
+    # Add to PDF
+    pdf.image(img_buf, x=10, w=190)
+    plt.close() # Memory cleanup
     
     pdf.ln(10)
     
