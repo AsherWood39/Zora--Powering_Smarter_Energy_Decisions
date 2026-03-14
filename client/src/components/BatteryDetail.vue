@@ -2,16 +2,22 @@
   <div class="detail-container">
     <!-- Header / Back button -->
     <div class="detail-header">
-      <button class="back-btn" @click="$emit('go-back')">
-        <span class="material-icons-round">arrow_back</span> Fleet
-      </button>
-      <div class="battery-title">
-        <span class="material-icons-round title-icon">battery_charging_full</span>
-        <h2>{{ batteryId }}</h2>
-        <span class="status-pill" :class="data?.status">
-          {{ data?.soh < 70 ? 'EOL / CRITICAL' : (data?.soh < 80 ? 'WARNING' : 'NORMAL') }}
-        </span>
+      <div class="header-left">
+        <button class="back-btn" @click="$emit('go-back')">
+          <span class="material-icons-round">arrow_back</span> Fleet
+        </button>
+        <div class="battery-title">
+          <span class="material-icons-round title-icon">battery_charging_full</span>
+          <h2>{{ batteryId }}</h2>
+          <span class="status-pill" :class="data?.status">
+            {{ data?.soh < 70 ? 'EOL / CRITICAL' : (data?.soh < 80 ? 'WARNING' : 'NORMAL') }}
+          </span>
+        </div>
       </div>
+      <button v-if="data" class="export-btn" @click="handleExport">
+        <span class="material-icons-round">download</span>
+        Export Report
+      </button>
     </div>
 
     <div v-if="loading" class="loading-state">
@@ -282,6 +288,10 @@ const fetchSimulation = async () => {
   }
 };
 
+const handleExport = () => {
+  window.open(`http://127.0.0.1:5000/api/export/report?battery_id=${props.batteryId}`, '_blank');
+};
+
 const renderChart = () => {
   const canvas = document.getElementById(`soh-chart-${props.batteryId}`);
   if (!canvas || !data.value || !data.value.chart_data) return;
@@ -419,8 +429,11 @@ const renderChart = () => {
 
 /* Header */
 .detail-header {
-  display: flex; align-items: center; gap: 1.2rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1.2rem;
   margin-bottom: 1.4rem;
+}
+.header-left {
+  display: flex; align-items: center; gap: 1.2rem;
 }
 .back-btn {
   display: flex; align-items: center; gap: 0.3rem;
@@ -433,6 +446,31 @@ const renderChart = () => {
 }
 .back-btn:hover { background: rgba(255,255,255,0.1); color: #e2e8f0; }
 .back-btn .material-icons-round { font-size: 1rem !important; }
+
+.export-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--accent-primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.export-btn:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+.export-btn:active {
+  transform: translateY(0);
+}
+.export-btn .material-icons-round {
+  font-size: 1.1rem;
+}
 
 .battery-title {
   display: flex; align-items: center; gap: 0.6rem;
