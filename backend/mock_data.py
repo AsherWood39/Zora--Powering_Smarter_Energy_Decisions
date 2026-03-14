@@ -157,7 +157,7 @@ def get_dashboard_stats(battery_id="B0005"):
         "battery_id": battery_id,
         "health_score": float(soh),
         "health_status": "Critical" if soh < 75 else ("Warning" if soh < 86 else "Good"),
-        "remaining_useful_life": f"{round(rul / 14, 1)} Months" if rul else "Calculating...",
+        "remaining_useful_life": f"{round(rul / 14, 1)} Months" if (rul is not None and rul > 0) else ("End of Life / Replace" if rul == 0 else "Calculating..."),
         "current_capacity": float(round(latest['Capacity'], 2)),
         "original_capacity": float(round(latest['meta_rated_cap'], 2)),
         "total_cycles": int(latest['cycle_number']),

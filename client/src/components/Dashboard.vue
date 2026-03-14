@@ -35,10 +35,16 @@
       </div>
     </div>
 
-    <!-- Main Chart -->
+    <!-- Main Chart & Analysis -->
     <div class="card chart-card">
       <div class="card-header">
-        <h2>Degradation Forecast</h2>
+        <div class="header-main">
+          <h2>Degradation Forecast</h2>
+          <p class="analysis-description">
+            <span class="material-icons-round">analytics</span>
+            Performing deep-cycle analysis on <strong>Battery Unit {{ stats.battery_id }}</strong>
+          </p>
+        </div>
         <div class="legend">
           <span class="dot actual"></span> Actual
           <span class="dot predicted"></span> Predicted
@@ -49,10 +55,17 @@
       </div>
     </div>
 
-    <!-- Recommendations -->
+    <!-- Recommendations (Now Stacked Below) -->
     <div class="card reco-card">
       <div class="card-header">
-        <h2>Smart Recommendations</h2>
+        <div class="header-main">
+          <h2>Smart Maintenance Directives</h2>
+          <p class="analysis-description">AI-generated prioritized actions for unit {{ stats.battery_id }}</p>
+        </div>
+        <div class="strategy-badge">
+           <span class="material-icons-round">psychology</span>
+           Expert Intelligence
+        </div>
       </div>
       <div class="reco-list">
         <div 
@@ -197,6 +210,33 @@ onMounted(async () => {
   font-size: 0.85rem;
   color: var(--text-secondary);
   line-height: 1.4;
+}
+
+.chart-card, .reco-card {
+  grid-column: span 3;
+}
+
+.header-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.analysis-description {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.analysis-description strong {
+  color: #818cf8;
+}
+
+.analysis-description .material-icons-round {
+  font-size: 1.1rem;
+  color: #818cf8;
 }
 
 .strategy-badge {

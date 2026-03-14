@@ -189,8 +189,8 @@ a {
     grid-template-rows: auto auto;
     /* KPIs, then Chart/Recos */
     gap: 1.5rem;
-    max-width: 1400px;
-    margin: 0 auto;
+    max-width: calc(100% - 100px); /* Leave room for FAB on the right */
+    margin: 0;
 }
 
 /* Cards */

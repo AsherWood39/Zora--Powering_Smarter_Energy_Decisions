@@ -43,12 +43,11 @@
           <template v-else-if="currentView === 'detail'"> / <span @click="currentView='fleet'; selectedBattery=null" class="breadcrumb-link">Fleet Triage</span> / <span class="current">{{ selectedBattery }}</span></template>
         </div>
         <div class="actions">
-          <button class="icon-btn"><span class="material-icons-round">notifications</span></button>
           <button class="primary-btn">Export Report</button>
         </div>
       </header>
 
-      <div class="content-wrapper">
+      <div class="content-wrapper" ref="scrollContainer" @scroll="handleScroll">
         <Transition name="fade" mode="out-in">
           <!-- Dashboard view -->
           <Dashboard v-if="currentView === 'dashboard'" key="dashboard" />
@@ -76,6 +75,20 @@
             />
           </div>
         </Transition>
+
+        <!-- Floating Scroll Toggle Button -->
+        <Transition name="fab-fade">
+          <button 
+            v-if="isScrollable && currentView !== 'model-info'"
+            class="fab-scroll-toggle"
+            @click="toggleScroll"
+            :title="isAtBottom ? 'Scroll to Top' : 'Scroll to Bottom'"
+          >
+            <span class="material-icons-round">
+              {{ isAtBottom ? 'keyboard_double_arrow_up' : 'keyboard_double_arrow_down' }}
+            </span>
+          </button>
+        </Transition>
       </div>
     </main>
   </div>
@@ -91,11 +104,51 @@ import Analytics     from './components/Analytics.vue';
 
 const currentView    = ref('dashboard');
 const selectedBattery = ref(null);
+const scrollContainer = ref(null);
+const isAtBottom      = ref(false);
+const isScrollable    = ref(false);
 
 const openBattery = (batteryId) => {
   selectedBattery.value = batteryId;
   currentView.value = 'detail';
 };
+
+const checkScrollability = () => {
+  if (scrollContainer.value) {
+    const { scrollHeight, clientHeight } = scrollContainer.value;
+    isScrollable.value = scrollHeight > clientHeight + 50; // Add small buffer
+  }
+};
+
+const handleScroll = (event) => {
+  const { scrollTop, scrollHeight, clientHeight } = event.target;
+  isAtBottom.value = scrollTop > (scrollHeight - clientHeight) / 2;
+  checkScrollability();
+};
+
+const toggleScroll = () => {
+  if (scrollContainer.value) {
+    const { scrollHeight, clientHeight } = scrollContainer.value;
+    const target = isAtBottom.value ? 0 : scrollHeight - clientHeight;
+    
+    scrollContainer.value.scrollTo({
+      top: target,
+      behavior: 'smooth'
+    });
+  }
+};
+
+// Re-check scrollability when view changes or components mount
+import { watch, onMounted, nextTick } from 'vue';
+watch(currentView, () => {
+  isAtBottom.value = false;
+  isScrollable.value = false;
+  nextTick(checkScrollability);
+});
+
+onMounted(() => {
+  setTimeout(checkScrollability, 500); // Wait for animations/data
+});
 </script>
 
 <style scoped>
@@ -116,4 +169,50 @@ const openBattery = (batteryId) => {
 /* Page transition */
 .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* Interactive Floating Action Button */
+.fab-scroll-toggle {
+  position: fixed;
+  bottom: 2.5rem;
+  right: 2.5rem;
+  width: 60px;
+  height: 60px;
+  border-radius: 18px; /* Matching card radius better */
+  background: linear-gradient(135deg, var(--accent-success), #059669);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 10px 30px rgba(16, 185, 129, 0.4);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.fab-scroll-toggle:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 15px 35px rgba(16, 185, 129, 0.6);
+  filter: brightness(1.1);
+}
+
+.fab-scroll-toggle:active {
+  transform: scale(0.95);
+}
+
+.fab-scroll-toggle span {
+  font-size: 2rem;
+  transition: transform 0.4s ease;
+}
+
+/* FAB Animation */
+.fab-fade-enter-active, .fab-fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.fab-fade-enter-from, .fab-fade-leave-to {
+  opacity: 0;
+  transform: scale(0.5) translateY(20px);
+}
+
 </style>
