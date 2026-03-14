@@ -95,12 +95,12 @@
        <h3><span class="material-icons-round">verified</span> Model Performance (LOBO Validation)</h3>
        <div class="perf-stats">
           <div class="perf-item">
-            <strong>SoH Accuracy (R²)</strong>
-            <span>{{ analytics.model_performance?.soh_r2 ? (analytics.model_performance.soh_r2 * 100).toFixed(1) + '%' : '---' }} Accuracy</span>
+            <strong>SoH Error (MAE)</strong>
+            <span>{{ analytics.model_performance?.soh_mae }}% Accuracy Gap</span>
           </div>
           <div class="perf-item">
              <strong>RUL Error (MAE)</strong>
-             <span>{{ analytics.model_performance?.rul_mae }}% Cycle Deviation</span>
+             <span>{{ analytics.model_performance?.rul_mae }} Cycles Deviation</span>
           </div>
           <div class="perf-item">
             <strong>Inference Speed</strong>

@@ -8,3 +8,4 @@ xgboost
 tqdm
 dotenv
 requests
+groq

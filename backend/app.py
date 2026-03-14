@@ -52,13 +52,15 @@ def battery_health(battery_id):
 
 @app.route('/api/battery/<battery_id>/simulate')
 def battery_simulate(battery_id):
-    """Returns temperature-adjusted RUL. Usage: /api/battery/B0005/simulate?temp=4"""
+    """Returns multi-factor adjusted RUL."""
     try:
         temp = float(request.args.get('temp', 24))
+        load = float(request.args.get('load', 2.0))
+        intensity = float(request.args.get('intensity', 1.0))
     except (ValueError, TypeError):
-        return jsonify({"error": "Invalid temperature value"}), 400
+        return jsonify({"error": "Invalid simulation parameters"}), 400
 
-    data = simulate_temperature(battery_id, temp)
+    data = simulate_temperature(battery_id, temp, load_current=load, usage_intensity=intensity)
     if data is None:
         return jsonify({"error": f"Battery '{battery_id}' not found"}), 404
     return jsonify(data)

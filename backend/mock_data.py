@@ -83,10 +83,19 @@ class ZoraPredictor:
             
             regime = "Normal 🟢"
             thresh = self.triage_rules["degradation_regime"]
+            
+            # Primary: ML Fade Rate logic
             if curr_fade < thresh["threshold_critical"]:
                 regime = "Critical 🔴"
             elif curr_fade < thresh["threshold_accelerated"]:
-                regime = "Accelerated 🟡"
+                regime = "Warning 🟡"
+            
+            # Secondary: Safety override if SoH is already very low
+            if soh_pred is not None:
+                if soh_pred < 75 and "Critical" not in regime:
+                    regime = "Critical 🔴"
+                elif soh_pred < 86 and "Normal" in regime:
+                    regime = "Warning 🟡"
                 
             response["predictions"]["degradation_regime"] = regime
             
@@ -179,7 +188,7 @@ def get_recommendations(battery_data=None):
                     "battery_id": "B0005",
                     "soh": 79.3,
                     "rul": 34,
-                    "regime": "Accelerated",
+                    "regime": "Warning",
                     "temperature": 24.0,
                     "total_cycles": 420
                 })
@@ -220,7 +229,7 @@ def get_recommendations(battery_data=None):
 A battery named {battery_data.get('battery_id', 'Unknown')} has the following metrics:
 - State of Health (SoH): {battery_data.get('soh', 'N/A')}%
 - Remaining Useful Life (RUL): {battery_data.get('rul', 'N/A')} cycles
-- Operating Regime: {battery_data.get('regime', 'N/A')} (Normal / Accelerated / Anomalous)
+- Operating Regime: {battery_data.get('regime', 'N/A')} (Normal / Warning / Critical)
 - Ambient Temperature: {battery_data.get('temperature', 'N/A')}°C
 - Total Cycles Completed: {battery_data.get('total_cycles', 'N/A')}
 
@@ -314,9 +323,9 @@ Base your recommendations on the actual battery condition above."""
 
 # Mock fleet: 8 batteries with realistic degradation values
 _MOCK_FLEET = [
-    {"battery_id": "B0018", "soh": 65.2, "rul": 12, "regime": "Anomalous",   "temperature": 24.0, "total_cycles": 616},
-    {"battery_id": "B0005", "soh": 78.9, "rul": 34, "regime": "Accelerated", "temperature": 24.0, "total_cycles": 548},
-    {"battery_id": "B0047", "soh": 80.1, "rul": 38, "regime": "Accelerated", "temperature":  4.0, "total_cycles": 132},
+    {"battery_id": "B0018", "soh": 65.2, "rul": 12, "regime": "Critical",   "temperature": 24.0, "total_cycles": 616},
+    {"battery_id": "B0005", "soh": 78.9, "rul": 34, "regime": "Warning", "temperature": 24.0, "total_cycles": 548},
+    {"battery_id": "B0047", "soh": 80.1, "rul": 38, "regime": "Warning", "temperature":  4.0, "total_cycles": 132},
     {"battery_id": "B0048", "soh": 82.4, "rul": 43, "regime": "Normal",      "temperature":  4.0, "total_cycles": 128},
     {"battery_id": "B0045", "soh": 84.7, "rul": 51, "regime": "Normal",      "temperature":  4.0, "total_cycles": 168},
     {"battery_id": "B0046", "soh": 86.3, "rul": 55, "regime": "Normal",      "temperature":  4.0, "total_cycles": 146},
@@ -325,13 +334,13 @@ _MOCK_FLEET = [
 ]
 
 def _get_status_color(soh):
-    """Returns status based on SoH thresholds."""
-    if soh < 75:
-        return "critical"   # 🔴
-    elif soh < 86:
-        return "warning"    # 🟡
+    """Returns status based on industry standard SoH thresholds."""
+    if soh < 70:
+        return "critical"   # 🔴 EOL
+    elif soh < 80:
+        return "warning"    # 🟡 Caution
     else:
-        return "good"       # 🟢
+        return "good"       # 🟢 Healthy
 
 
 def get_fleet_triage():
@@ -372,15 +381,18 @@ def get_fleet_triage():
             elif temp < 10:
                 group_name = "Cold Temp (4°C)"
 
+            # Extract regime from ML prediction
+            regime_label = pred["predictions"].get("degradation_regime", "NORMAL").replace("🟢", "").replace("🟡", "").replace("🔴", "").strip().upper()
+
             fleet.append({
                 "battery_id": bid,
                 "soh": float(soh),
-                "rul": int(rul) if rul else 0,
+                "rul": int(rul) if rul is not None else 0,
                 "status": "critical" if soh < 75 else ("warning" if soh < 86 else "good"),
-                "rul_months": round(float(rul) / 14, 1) if rul else "Calculating...",
+                "rul_months": round(float(rul) / 14, 1) if rul and rul > 0 else 0,
                 "total_cycles": int(latest['cycle_number']),
                 "temperature": temp,
-                "regime": pred["predictions"].get("degradation_regime", "NORMAL").replace("🟢", "").replace("🟡", "").replace("🔴", "").strip(),
+                "regime": regime_label,
                 "group_id": gid,
                 "group_name": group_name
             })
@@ -415,8 +427,8 @@ def get_fleet_analytics():
     # 4. Success metrics (Model Performance)
     # These are typically extracted from training logs, but we hardcode the validated scores
     model_performance = {
-        "soh_r2": 0.982,
-        "rul_mae": 1.24,
+        "soh_mae": 2.96,
+        "rul_mae": 4.91,
         "inference_ms": 42
     }
 
@@ -435,6 +447,17 @@ def get_most_critical_battery_id():
         return "B0005"
     return fleet[0]["battery_id"]
 
+
+def _get_dataset_threshold(battery_id):
+    """Returns the actual experimental threshold from NASA READMEs."""
+    try:
+        num = int(''.join(filter(str.isdigit, battery_id)))
+        if num in [5, 6, 7, 18]: return 70.0 # 30% fade
+        if num in [33, 34, 36]: return 80.0 # 20% fade
+        if num >= 49 and num <= 52: return 50.0 # Crash point/deep degradation
+    except:
+        pass
+    return 70.0 # Standard fallback
 
 def get_battery_health(battery_id):
     """
@@ -458,26 +481,31 @@ def get_battery_health(battery_id):
     regime_history = []
     for s in historical_soh:
         if s > 88: regime_history.append("Normal")
-        elif s > 78: regime_history.append("Accelerated")
-        else: regime_history.append("Anomalous")
+        elif s > 78: regime_history.append("Warning")
+        else: regime_history.append("Critical")
+
+    # Consistent regime based on SoH thresholds for visual clarity
+    current_regime = "NORMAL" if soh >= 86 else ("WARNING" if soh >= 75 else "CRITICAL")
 
     return {
         "battery_id": battery_id,
         "soh": float(soh),
         "rul": int(pred["predictions"].get("rul", {}).get("value_cycles", 0)),
-        "status": "critical" if soh < 75 else ("warning" if soh < 86 else "good"),
-        "rul_months": round(float(pred["predictions"].get("rul", {}).get("value_cycles", 0)) / 14, 1),
+        "dataset_threshold": _get_dataset_threshold(battery_id),
+        "status": "critical" if soh < 70 else ("warning" if soh < 80 else "good"),
+        "rul_months": round(float(pred["predictions"].get("rul", {}).get("value_cycles", 0)) / 14, 1) if pred["predictions"].get("rul", {}).get("value_cycles", 0) > 0 else 0,
         "total_cycles": int(latest['cycle_number']),
         "temperature": float(latest.get('ambient_temperature', 24.0)),
         "chart_data": chart_payload,
+        "regime": current_regime,
         "regime_history": regime_history,
         "cycle_labels": chart_payload["labels"][:len(historical_soh)],
     }
 
 
-def simulate_temperature(battery_id, temp):
+def simulate_temperature(battery_id, temp, load_current=2.0, usage_intensity=1.0):
     """
-    Returns temperature-adjusted RUL for a battery based on real model values.
+    Returns multi-factor adjusted RUL and predicted curve for a battery.
     """
     df = _get_data()
     if df.empty or battery_id not in df['battery_id'].unique():
@@ -490,26 +518,52 @@ def simulate_temperature(battery_id, temp):
     # Get base RUL from predictor
     pred = _predictor.predict(latest.to_dict())
     base_rul = pred["predictions"].get("rul", {}).get("value_cycles", 45)
+    current_soh = pred["predictions"].get("soh", {}).get("value_percent", 80)
 
-    # Simple thermal degradation formula (temp penalty grows away from 24°C)
-    delta = abs(temp - 24)
-    if temp < 24:
-        # Cold accelerates degradation more than heat in this dataset
-        penalty = delta * 0.018
-    else:
-        penalty = delta * 0.010
+    # 1. Thermal Penalty (optimized for 24C)
+    thermal_delta = abs(temp - 24)
+    thermal_penalty = (thermal_delta * 0.018) if temp < 24 else (thermal_delta * 0.010)
+    
+    # 2. Load Current Penalty (Assuming 2A is baseline)
+    load_penalty = (load_current - 2.0) * 0.05  # Negative (bonus) if load < 2A
+    
+    # 3. Usage Intensity Penalty
+    intensity_penalty = (usage_intensity - 1.0) * 0.15 # Negative (bonus) if intensity < 1.0
 
-    factor = max(0.3, 1.0 - penalty)
-    adjusted_rul = round(base_rul * factor)
-    impact_pct = round((1 - factor) * 100, 1)
+    # If base_rul is 0 or very low, we allow the simulation to show what *would* happen 
+    # if conditions were better, using a small buffer for "potential" cycles.
+    effective_base = base_rul if base_rul > 2 else 5
+    
+    total_factor = max(0.1, 1.0 - (thermal_penalty + load_penalty + intensity_penalty))
+    adjusted_rul = round(effective_base * total_factor)
+    
+    # Calculate % change from BASE (relative to actual predicted value)
+    diff_pct = round((total_factor - 1.0) * 100, 1)
+
+    # Generate predicted curve for a fixed visual window (90 cycles)
+    curve = []
+    visual_window = 90
+    
+    # Ensure degradation always goes DOWN. Fade rate should be based 
+    # on current SoH reaching 0 (total failure).
+    fade_per_cycle = current_soh / max(1, adjusted_rul)
+    
+    for i in range(visual_window + 1):
+        # Slope logic: SoH drops from current value towards 0
+        soh_val = current_soh - (i * fade_per_cycle)
+        curve.append(max(0, round(soh_val, 2)))
 
     return {
         "battery_id": battery_id,
         "base_rul": float(base_rul),
         "temperature": float(temp),
+        "load_current": float(load_current),
+        "usage_intensity": float(usage_intensity),
         "adjusted_rul": int(adjusted_rul),
         "adjusted_rul_months": float(round(adjusted_rul / 14, 1)),
-        "temp_impact_pct": float(impact_pct),
+        "impact_pct": diff_pct,
+        "dataset_threshold": _get_dataset_threshold(battery_id),
+        "predicted_curve": curve
     }
 
 
@@ -602,7 +656,7 @@ def get_chart_payload(battery_id):
     else:
         fade_per_cycle = 0.05
 
-    for i in range(1, 51):
+    for i in range(1, 101): # Show 100 cycles of future projection
         labels.append(f"Cycle {int(history['cycle_number'].iloc[-1] + i)}")
         actual_data.append(None)
         last_val -= fade_per_cycle
