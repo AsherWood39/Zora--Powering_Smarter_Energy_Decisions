@@ -83,7 +83,6 @@
             <h4>{{ reco.title }}</h4>
             <p>{{ reco.description }}</p>
           </div>
-          <button class="action-btn">Action</button>
         </div>
       </div>
     </div>

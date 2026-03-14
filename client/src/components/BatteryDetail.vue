@@ -201,7 +201,6 @@
               <h4>{{ reco.title }}</h4>
               <p>{{ reco.description }}</p>
             </div>
-            <button class="action-btn">Optimize</button>
           </div>
         </div>
       </div>
@@ -713,12 +712,6 @@ const renderChart = () => {
 .reco-content h4 { font-size: 0.95rem; font-weight: 700; color: #f1f5f9; margin: 0 0 0.2rem 0; }
 .reco-content p { font-size: 0.82rem; color: #94a3b8; line-height: 1.5; margin: 0; }
 
-.action-btn {
-  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1);
-  color: #e2e8f0; border-radius: 6px; padding: 0.4rem 0.8rem;
-  font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;
-}
-.action-btn:hover { background: var(--accent-primary); border-color: transparent; }
 @keyframes shimmer {
   0% { background-position: 200% 0; } 100% { background-position: -200% 0; }
 }
