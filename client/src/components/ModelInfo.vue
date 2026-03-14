@@ -82,12 +82,12 @@
           </p>
           <div class="stats-mini">
             <div class="stat">
-              <span class="val">96%+</span>
-              <span class="lbl">R² Accuracy</span>
+              <span class="val">~3%</span>
+              <span class="lbl">SoH MAE</span>
             </div>
             <div class="stat">
-              <span class="val">< 1.5%</span>
-              <span class="lbl">MAE Error</span>
+              <span class="val">~4</span>
+              <span class="lbl">RUL MAE (Cycles)</span>
             </div>
           </div>
         </section>

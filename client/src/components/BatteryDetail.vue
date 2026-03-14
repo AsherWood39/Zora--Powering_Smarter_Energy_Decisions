@@ -8,7 +8,9 @@
       <div class="battery-title">
         <span class="material-icons-round title-icon">battery_charging_full</span>
         <h2>{{ batteryId }}</h2>
-        <span class="status-pill" :class="data?.status">{{ data?.regime }}</span>
+        <span class="status-pill" :class="data?.status">
+          {{ data?.soh < 70 ? 'EOL / CRITICAL' : (data?.soh < 80 ? 'WARNING' : 'NORMAL') }}
+        </span>
       </div>
     </div>
 
@@ -59,8 +61,8 @@
           <h3>Regime Timeline</h3>
           <div class="regime-legend">
             <span class="leg normal">🟢 Normal</span>
-            <span class="leg accelerated">🟡 Accelerated</span>
-            <span class="leg anomalous">🔴 Anomalous</span>
+            <span class="leg warning">🟡 Warning</span>
+            <span class="leg critical">🔴 Critical</span>
           </div>
         </div>
         <div class="regime-bar">
@@ -81,15 +83,19 @@
       <!-- Temperature Slider -->
       <div class="card temp-card">
         <div class="card-header">
-          <h3>🌡️ Temperature Scenario</h3>
-          <span class="chart-sub">Drag to see RUL impact</span>
+          <h3>🌡️ Scenario Simulator</h3>
+          <div class="header-actions">
+            <span class="chart-sub">Diagnostic "What-If" Analysis</span>
+            <button class="reset-btn" @click="resetSimulation" title="Reset to Defaults">
+              <span class="material-icons-round">restart_alt</span>
+            </button>
+          </div>
         </div>
 
         <div class="slider-section">
           <div class="slider-labels">
-            <span>-10°C</span>
-            <span class="current-temp">{{ sliderTemp }}°C</span>
-            <span>45°C</span>
+            <span>🌡️ Ambient Temp</span>
+            <span class="current-val">{{ sliderTemp }}°C</span>
           </div>
           <input
             type="range"
@@ -98,7 +104,39 @@
             step="1"
             v-model.number="sliderTemp"
             class="temp-slider"
-            @input="onTempChange"
+            @input="onSimParamChange"
+          />
+        </div>
+
+        <div class="slider-section">
+          <div class="slider-labels">
+            <span>🔌 Discharge Load</span>
+            <span class="current-val">{{ sliderLoad }}A</span>
+          </div>
+          <input
+            type="range"
+            min="1"
+            max="10"
+            step="0.5"
+            v-model.number="sliderLoad"
+            class="load-slider"
+            @input="onSimParamChange"
+          />
+        </div>
+
+        <div class="slider-section">
+          <div class="slider-labels">
+            <span>⚡ Usage Intensity</span>
+            <span class="current-val">{{ sliderIntensity }}x</span>
+          </div>
+          <input
+            type="range"
+            min="0.5"
+            max="2.5"
+            step="0.1"
+            v-model.number="sliderIntensity"
+            class="intensity-slider"
+            @input="onSimParamChange"
           />
         </div>
 
@@ -113,11 +151,16 @@
             </div>
             <div class="result-box adjusted">
               <div class="result-label">At {{ sliderTemp }}°C</div>
-              <div class="result-value" :class="{'warn': simResult.temp_impact_pct > 20}">
+              <div class="result-value" :class="{'warn': simResult.impact_pct < 0, 'success': simResult.impact_pct > 0}">
                 {{ simResult.adjusted_rul }} cycles
               </div>
-              <div class="result-sub" v-if="simResult.temp_impact_pct > 0">
-                ↓ {{ simResult.temp_impact_pct }}% reduction
+              <div class="result-sub" v-if="Math.abs(simResult.impact_pct) > 0.1">
+                <template v-if="simResult.impact_pct > 0">
+                  <span class="success-text">↑ {{ Math.abs(simResult.impact_pct) }}% increase</span>
+                </template>
+                <template v-else>
+                  <span class="warn-text">↓ {{ Math.abs(simResult.impact_pct) }}% reduction</span>
+                </template>
               </div>
             </div>
           </div>
@@ -133,6 +176,9 @@
 import { ref, onMounted, watch, nextTick } from 'vue';
 import axios from 'axios';
 import Chart from 'chart.js/auto';
+import annotationPlugin from 'chartjs-plugin-annotation';
+
+Chart.register(annotationPlugin);
 
 const props = defineProps({ batteryId: String });
 const emit  = defineEmits(['go-back']);
@@ -140,6 +186,9 @@ const emit  = defineEmits(['go-back']);
 const data      = ref(null);
 const loading   = ref(true);
 const sliderTemp = ref(24);
+const sliderLoad = ref(2.0);
+const sliderIntensity = ref(1.0);
+
 const simResult  = ref(null);
 const simulatedRul    = ref(null);
 const simulatedMonths = ref(null);
@@ -155,31 +204,79 @@ onMounted(async () => {
     simulatedRul.value = res.data.rul;
     simulatedMonths.value = res.data.rul_months;
 
+    loading.value = false;
     await nextTick();
     renderChart();
     await fetchSimulation(sliderTemp.value);
   } catch (e) {
     console.error('Battery detail fetch error:', e);
-  } finally {
+    loading.value = false;
+  }
+});
+
+// Watch for battery change if component is kept alive
+watch(() => props.batteryId, async () => {
+  loading.value = true;
+  try {
+    const res = await axios.get(`http://127.0.0.1:5000/api/battery/${props.batteryId}/health`);
+    data.value = res.data;
+    sliderTemp.value = res.data.temperature;
+    simulatedRul.value = res.data.rul;
+    simulatedMonths.value = res.data.rul_months;
+    
+    loading.value = false;
+    await nextTick();
+    renderChart();
+    await fetchSimulation(sliderTemp.value);
+  } catch (e) {
+    console.error('Battery detail update error:', e);
     loading.value = false;
   }
 });
 
 // Debounce slider
 let debounceTimer = null;
-const onTempChange = () => {
+const onSimParamChange = () => {
   clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => fetchSimulation(sliderTemp.value), 300);
+  debounceTimer = setTimeout(() => fetchSimulation(), 100);
 };
 
-const fetchSimulation = async (temp) => {
+const resetSimulation = () => {
+  if (!data.value) return;
+  sliderTemp.value = data.value.temperature;
+  sliderLoad.value = 2.0;
+  sliderIntensity.value = 1.0;
+  fetchSimulation();
+};
+
+const fetchSimulation = async () => {
   try {
     const res = await axios.get(
-      `http://127.0.0.1:5000/api/battery/${props.batteryId}/simulate?temp=${temp}`
+      `http://127.0.0.1:5000/api/battery/${props.batteryId}/simulate?temp=${sliderTemp.value}&load=${sliderLoad.value}&intensity=${sliderIntensity.value}`
     );
     simResult.value = res.data;
     simulatedRul.value = res.data.adjusted_rul;
     simulatedMonths.value = res.data.adjusted_rul_months;
+
+    // Real-time chart update
+    if (chartInstance && res.data.predicted_curve) {
+      const predDataset = chartInstance.data.datasets[1];
+      const startIdx = predDataset.data.findIndex(v => v !== null);
+      if (startIdx !== -1) {
+        // Map simulation curve to chart labels
+        const labelsToFill = chartInstance.data.labels.length - startIdx;
+        const curve = res.data.predicted_curve;
+        
+        const newData = [...predDataset.data];
+        // Ensure the projection aligns with the X-axis labels
+        for (let i = 0; i < labelsToFill; i++) {
+          const curveIdx = Math.min(i, curve.length - 1);
+          newData[startIdx + i] = curve[curveIdx];
+        }
+        predDataset.data = newData;
+        chartInstance.update('none'); 
+      }
+    }
   } catch (e) {
     console.error('Simulation error:', e);
   }
@@ -243,6 +340,58 @@ const renderChart = () => {
           bodyColor: '#cbd5e1',
           borderColor: '#334155',
           borderWidth: 1,
+        },
+        // EOL Threshold Line
+        annotation: {
+          annotations: {
+            eolLine: {
+              type: 'line',
+              yMin: 70,
+              yMax: 70,
+              borderColor: 'rgba(239, 68, 68, 0.4)',
+              borderWidth: 2,
+              borderDash: [5, 5],
+              label: {
+                display: true,
+                content: 'Industry EOL (70%)',
+                position: 'end',
+                backgroundColor: 'rgba(239, 68, 68, 0.8)',
+                color: '#fff',
+                font: { size: 10, weight: 'bold' }
+              }
+            },
+            warningLine: {
+              type: 'line',
+              yMin: 80,
+              yMax: 80,
+              borderColor: 'rgba(245, 158, 11, 0.3)',
+              borderWidth: 1,
+              borderDash: [5, 5],
+              label: {
+                display: true,
+                content: 'Warning (80%)',
+                position: 'start',
+                backgroundColor: 'rgba(245, 158, 11, 0.6)',
+                color: '#fff',
+                font: { size: 9 }
+              }
+            },
+            experimentalLine: {
+              type: 'line',
+              yMin: data.value?.dataset_threshold || 70,
+              yMax: data.value?.dataset_threshold || 70,
+              borderColor: 'rgba(139, 92, 246, 0.5)',
+              borderWidth: 2,
+              label: {
+                display: true,
+                content: 'Experimental Cutoff',
+                position: 'center',
+                backgroundColor: 'rgba(139, 92, 246, 0.8)',
+                color: '#fff',
+                font: { size: 9, weight: 'bold' }
+              }
+            }
+          }
         }
       },
       scales: {
@@ -250,9 +399,9 @@ const renderChart = () => {
         y: {
           grid: { color: '#334155', borderDash: [2, 4] },
           ticks: { color: '#64748b', callback: v => v + '%' },
-          // Smarter Y axis scaling
-          suggestedMin: 60,
-          suggestedMax: 100
+          min: 0,
+          max: 100,
+          stepSize: 20
         }
       },
       interaction: {
@@ -299,9 +448,9 @@ const renderChart = () => {
   padding: 0.2rem 0.6rem; border-radius: 20px;
   text-transform: uppercase; letter-spacing: 0.05em;
 }
-.status-pill.critical { background: rgba(239,68,68,0.2); color: #f87171; }
-.status-pill.warning  { background: rgba(245,158,11,0.2); color: #fbbf24; }
-.status-pill.good     { background: rgba(16,185,129,0.2); color: #34d399; }
+.status-pill.critical { background: rgba(239,68,68,0.2); color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+.status-pill.warning  { background: rgba(245,158,11,0.2); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); }
+.status-pill.good     { background: rgba(16,185,129,0.2); color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
 
 /* KPI Strip */
 .kpi-strip {
@@ -351,8 +500,8 @@ const renderChart = () => {
 }
 .regime-segment:hover { opacity: 0.7; }
 .regime-segment.normal      { background: #10b981; }
-.regime-segment.accelerated { background: #f59e0b; }
-.regime-segment.anomalous   { background: #ef4444; }
+.regime-segment.warning { background: #f59e0b; }
+.regime-segment.critical   { background: #ef4444; }
 
 .regime-labels {
   display: flex; justify-content: space-between;
@@ -374,22 +523,36 @@ const renderChart = () => {
 .current-temp {
   font-weight: 800; font-size: 1rem; color: #e2e8f0;
 }
-.temp-slider {
-  width: 100%; -webkit-appearance: none;
+.temp-slider, .load-slider, .intensity-slider {
+  width: 100%; -webkit-appearance: none; appearance: none;
   height: 6px; border-radius: 4px;
-  background: linear-gradient(90deg, #3b82f6, #818cf8, #f59e0b, #ef4444);
   outline: none; cursor: pointer;
 }
-.temp-slider::-webkit-slider-thumb {
+.temp-slider {
+  background: linear-gradient(90deg, #3b82f6, #818cf8, #f59e0b, #ef4444);
+}
+.load-slider {
+  background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444);
+}
+.intensity-slider {
+  background: linear-gradient(90deg, #6366f1, #a855f7, #ec4899);
+}
+.temp-slider::-webkit-slider-thumb, 
+.load-slider::-webkit-slider-thumb, 
+.intensity-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 18px; height: 18px;
+  width: 16px; height: 16px;
   border-radius: 50%;
   background: #fff;
   box-shadow: 0 2px 8px rgba(0,0,0,0.4);
   cursor: pointer;
   transition: transform 0.15s;
 }
-.temp-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+.temp-slider::-webkit-slider-thumb:hover,
+.load-slider::-webkit-slider-thumb:hover,
+.intensity-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+
+.current-val { font-weight: 800; font-size: 0.9rem; color: #e2e8f0; }
 
 .temp-result-row {
   display: flex; align-items: center; gap: 1rem;
@@ -402,8 +565,36 @@ const renderChart = () => {
 .result-box.adjusted { border: 1px solid rgba(99,102,241,0.3); }
 .result-label { font-size: 0.7rem; color: #64748b; font-weight: 600; text-transform: uppercase; }
 .result-value { font-size: 1.3rem; font-weight: 800; color: #e2e8f0; margin-top: 0.3rem; }
-.result-value.warn { color: #f87171; }
-.result-sub { font-size: 0.7rem; color: #f87171; margin-top: 0.2rem; }
+.result-value.success { color: #10b981; }
+.result-sub .success-text { color: #10b981; font-weight: 600; }
+.result-sub .warn-text    { color: #f87171; font-weight: 600; }
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.reset-btn {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #94a3b8;
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.reset-btn:hover {
+  background: rgba(99,102,241,0.2);
+  color: #818cf8;
+  border-color: rgba(99,102,241,0.4);
+}
+.reset-btn .material-icons-round { font-size: 1.1rem; }
+
 .result-arrow .material-icons-round { color: #475569; }
 
 /* Skeleton */

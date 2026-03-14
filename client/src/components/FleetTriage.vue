@@ -240,7 +240,8 @@ onMounted(async () => {
   letter-spacing: 0.05em;
 }
 .regime-normal      { background: rgba(16,185,129,0.15); color: #34d399; }
-.regime-accelerated { background: rgba(245,158,11,0.15); color: #fbbf24; }
+.regime-warning { background: rgba(245,158,11,0.15); color: #fbbf24; }
+.regime-critical,
 .regime-anomalous   { background: rgba(239,68,68,0.15);  color: #f87171; }
 
 .soh-section { display: flex; align-items: center; gap: 0.6rem; }

@@ -10,6 +10,7 @@ Zora-DOC.md
 progress_checklist.md
 results/
 Screenshot 2026-03-10 161521.png
+backend/test_api.py
 
 # Brain/Artifacts (Agent)
 .gemini/

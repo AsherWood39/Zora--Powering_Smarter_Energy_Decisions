@@ -95,6 +95,9 @@
 import { ref, onMounted } from 'vue';
 import axios from 'axios';
 import Chart from 'chart.js/auto';
+import annotationPlugin from 'chartjs-plugin-annotation';
+
+Chart.register(annotationPlugin);
 
 const stats = ref(null);
 const recommendations = ref([]);
@@ -157,6 +160,40 @@ const renderChart = async () => {
             bodyColor: '#cbd5e1',
             borderColor: '#334155',
             borderWidth: 1
+          },
+          annotation: {
+            annotations: {
+              eolLine: {
+                type: 'line',
+                yMin: 70, yMax: 70,
+                borderColor: 'rgba(239, 68, 68, 0.4)',
+                borderWidth: 2,
+                borderDash: [5, 5],
+                label: {
+                  display: true,
+                  content: 'Industry EOL (70%)',
+                  position: 'end',
+                  backgroundColor: 'rgba(239, 68, 68, 0.8)',
+                  color: '#fff',
+                  font: { size: 10, weight: 'bold' }
+                }
+              },
+              warningLine: {
+                type: 'line',
+                yMin: 80, yMax: 80,
+                borderColor: 'rgba(245, 158, 11, 0.3)',
+                borderWidth: 1,
+                borderDash: [5, 5],
+                label: {
+                  display: true,
+                  content: 'Warning (80%)',
+                  position: 'start',
+                  backgroundColor: 'rgba(245, 158, 11, 0.6)',
+                  color: '#fff',
+                  font: { size: 9 }
+                }
+              }
+            }
           }
         },
         scales: {
@@ -166,7 +203,10 @@ const renderChart = async () => {
           },
           y: {
             grid: { color: '#334155', borderDash: [2, 4] },
-            ticks: { color: '#64748b' }
+            ticks: { color: '#64748b', callback: v => v + '%' },
+            min: 0,
+            max: 100,
+            stepSize: 20
           }
         },
         interaction: {

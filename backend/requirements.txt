@@ -7,4 +7,6 @@ scikit-learn
 xgboost
 tqdm
 dotenv
-requestsfpdf2
+requests
+groq
+fpdf2
