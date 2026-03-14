@@ -6,8 +6,6 @@ from mock_data import (
     get_fleet_triage, 
     get_battery_health_details,
     get_fleet_analytics,
-    get_user_preferences,
-    save_user_preferences,
     simulate_temperature,
     get_most_critical_battery_id,
     get_recommendations
@@ -71,16 +69,6 @@ def analytics_summary():
     """Returns deep fleet analytics data from the real dataset."""
     return jsonify(get_fleet_analytics())
 
-@app.route('/api/preferences', methods=['GET', 'POST'])
-def handle_preferences():
-    """Handle saving and loading of user preferences."""
-    if request.method == 'POST':
-        data = request.json
-        if save_user_preferences(data):
-            return jsonify({"status": "success", "message": "Strategy updated."})
-        return jsonify({"status": "error", "message": "Failed to save strategy."}), 500
-    
-    return jsonify(get_user_preferences())
 
 
 if __name__ == '__main__':
