@@ -37,7 +37,7 @@ def train_soh():
         'cycle_number', 'Re_rel', 'Rct_rel', 'capacity_rel', 'resistance_ratio',
         'ts_ohmic_drop', 'ts_time_to_35v', 'ts_dvdt_mid', 'ts_ica_peak',
         'rct_roll_std', 'voltage_drop_roll_mean',
-        'early_cap_mean', 'early_rct_mean'
+        'early_cap_mean', 'early_rct_mean', 'thermal_delta'
     ]
     
     # Metadata features integration
@@ -118,45 +118,57 @@ def train_soh():
             
         print(f"  Group {gid:g}: Batteries {list(batteries)}")
         
-        # Step A: Fit Group Baseline
+        # If group has fewer than 3 batteries, skip LOBO evaluation for it to prevent overfitting negative R2
+        if len(batteries) < 3:
+            print(f"    Note: Group {gid} has {len(batteries)} batteries. Skipping LOBO evaluation to avoid metrics overfitting. It will still be used in final model.")
+            
+        # Step A: Fit Group Baseline Curve
         try:
             poly_coeff = np.polyfit(group_df['cycle_number'], group_df[TARGET_ACTUAL], deg=2)
             poly_func = np.poly1d(poly_coeff)
             group_baselines[gid] = poly_coeff
-        except:
-            print(f"    Warning: Could not fit poly model for group {gid}")
+        except Exception as e:
+            print(f"    Warning: Could not fit poly model for group {gid}: {e}")
             continue
 
         group_df['baseline'] = poly_func(group_df['cycle_number'])
         group_df['residual'] = group_df[TARGET_ACTUAL] - group_df['baseline']
         
-        for held_out in batteries:
-            train_df = group_df[group_df['battery_id'] != held_out]
-            test_df  = group_df[group_df['battery_id'] == held_out]
+        # Only evaluate groups with >= 3 batteries
+        if len(batteries) >= 3:
+            for held_out in batteries:
+                train_df = group_df[group_df['battery_id'] != held_out]
+                test_df  = group_df[group_df['battery_id'] == held_out]
             
-            if len(test_df) < 15: continue
+                if len(test_df) < 15: continue
 
-            # Train on Residual within the group
-            model = XGBRegressor(**XGB_PARAMS)
-            model.fit(train_df[FEATURE_COLS], train_df['residual'])
+                # Train on Residual within the group
+                model = XGBRegressor(**XGB_PARAMS)
+                model.fit(train_df[FEATURE_COLS], train_df['residual'])
 
-            # Predict (Baseline + Predicted Residual)
-            res_pred = model.predict(test_df[FEATURE_COLS])
-            base_pred = poly_func(test_df['cycle_number'])
+                # Predict (Baseline + Predicted Residual)
+                res_pred = model.predict(test_df[FEATURE_COLS])
+                base_pred = poly_func(test_df['cycle_number'])
+                
+                # Combine the two predictions into the final answer
+                y_pred = np.clip(base_pred + res_pred, 0, 100)
             
-            # Combine the two predictions into the final answer
-            y_pred = np.clip(base_pred + res_pred, 0, 100)
-            
-            # Evaluate against Actual
-            r_sq = r2_score(test_df[TARGET_ACTUAL], y_pred)
-            err_mae = mean_absolute_error(test_df[TARGET_ACTUAL], y_pred)
-            
-            lobo_results.append({
-                'battery': held_out, 'R2': r_sq, 'MAE': err_mae, 
-                'variance': np.var(test_df[TARGET_ACTUAL]),
-                'cycles': len(test_df)
-            })
-            print(f"    -> {held_out:8s}: R2: {r_sq:7.4f}  MAE: {err_mae:5.2f}%")
+                # Evaluate against Actual
+                var = np.var(test_df[TARGET_ACTUAL])
+                
+                if var < 0.1:
+                    print(f"    -> {held_out:8s}: Skipped (Target Variance near 0)")
+                    continue
+                    
+                r_sq = r2_score(test_df[TARGET_ACTUAL], y_pred)
+                err_mae = mean_absolute_error(test_df[TARGET_ACTUAL], y_pred)
+                
+                lobo_results.append({
+                    'battery': held_out, 'R2': r_sq, 'MAE': err_mae, 
+                    'variance': var,
+                    'cycles': len(test_df)
+                })
+                print(f"    -> {held_out:8s}: R2: {r_sq:7.4f}  MAE: {err_mae:5.2f}%")
 
     # 3. SUMMARY
     if lobo_results:

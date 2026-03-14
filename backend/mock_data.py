@@ -5,9 +5,98 @@ import numpy as np
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from groq import Groq
-from ml.predict import ZoraPredictor
+import pickle
 
 # --- REAL ML INTEGRATION ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FEATS_PATH = os.path.join(BASE_DIR, "ml/results/final_features.csv")
+TRIAGE_RULES_PATH = os.path.join(BASE_DIR, "ml/results/fleet_triage_rules.json")
+SOH_MODEL_PATH = os.path.join(BASE_DIR, "ml/results/soh_model_bundle.pkl")
+RUL_MODEL_PATH = os.path.join(BASE_DIR, "ml/results/rul_model_bundle.pkl")
+
+class ZoraPredictor:
+    def __init__(self):
+        self.soh_bundle = None
+        self.rul_bundle = None
+        self.triage_rules = None
+        
+        if os.path.exists(SOH_MODEL_PATH):
+            with open(SOH_MODEL_PATH, 'rb') as f:
+                self.soh_bundle = pickle.load(f)
+        if os.path.exists(RUL_MODEL_PATH):
+            with open(RUL_MODEL_PATH, 'rb') as f:
+                self.rul_bundle = pickle.load(f)
+        if os.path.exists(TRIAGE_RULES_PATH):
+            with open(TRIAGE_RULES_PATH, 'r') as f:
+                self.triage_rules = json.load(f)
+
+    def _apply_bundle(self, bundle, features_dict, is_rul=False):
+        if not bundle:
+            return None
+            
+        group_id = features_dict.get('meta_group_id', 0)
+        cycle = features_dict.get('cycle_number', 1)
+        
+        group_baselines = bundle.get('group_baselines', {})
+        if group_id in group_baselines:
+            poly_coeff = group_baselines[group_id]
+            poly_func = np.poly1d(poly_coeff)
+            baseline_pred = poly_func(cycle)
+        else:
+            poly_func = np.poly1d(bundle['global_baseline'])
+            baseline_pred = poly_func(cycle)
+            
+        feature_cols = bundle['features']
+        x_input = pd.DataFrame([{col: features_dict.get(col, 0) for col in feature_cols}])
+        residual_pred = bundle['ml_model'].predict(x_input)[0]
+        
+        final_pred = baseline_pred + residual_pred
+        
+        if is_rul:
+            return max(0.0, float(final_pred))
+        else:
+            return max(0.0, min(100.0, float(final_pred)))
+
+    def predict(self, features_dict):
+        response = {
+            "status": "success",
+            "predictions": {}
+        }
+        
+        soh_pred = self._apply_bundle(self.soh_bundle, features_dict, is_rul=False)
+        if soh_pred is not None:
+            response["predictions"]["soh"] = {
+                "value_percent": round(soh_pred, 2),
+                "confidence_interval": [max(0, round(soh_pred - 3.54, 2)), min(100, round(soh_pred + 3.54, 2))]
+            }
+            
+        rul_pred = self._apply_bundle(self.rul_bundle, features_dict, is_rul=True)
+        if rul_pred is not None:
+            response["predictions"]["rul"] = {
+                "value_cycles": round(rul_pred, 1),
+                "confidence_interval": [max(0, round(rul_pred - 5.77, 1)), round(rul_pred + 5.77, 1)]
+            }
+            
+        if self.triage_rules:
+            curr_fade = features_dict.get('fade_rate_last_10_cycles', 0)
+            curr_re = features_dict.get('Re', 0)
+            
+            regime = "Normal 🟢"
+            thresh = self.triage_rules["degradation_regime"]
+            if curr_fade < thresh["threshold_critical"]:
+                regime = "Critical 🔴"
+            elif curr_fade < thresh["threshold_accelerated"]:
+                regime = "Accelerated 🟡"
+                
+            response["predictions"]["degradation_regime"] = regime
+            
+            if soh_pred is not None and soh_pred <= 80.0:
+                is_safe = curr_re < self.triage_rules["second_life"]["re_safety_cutoff"]
+                response["predictions"]["second_life_eligible"] = "Yes ✅" if is_safe else "Unsafe (High Re) ❌"
+            else:
+                response["predictions"]["second_life_eligible"] = "N/A (Battery still in Primary Life)"
+                
+        return response
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FEATS_PATH = os.path.join(BASE_DIR, "ml/results/final_features.csv")
 TRIAGE_RULES_PATH = os.path.join(BASE_DIR, "ml/results/fleet_triage_rules.json")
@@ -66,11 +155,11 @@ def get_battery_stats(battery_id="B0005"):
     
     return {
         "battery_id": battery_id,
-        "health_score": round(soh, 1),
+        "health_score": float(soh),
         "health_status": "Critical" if soh < 75 else ("Warning" if soh < 86 else "Good"),
         "remaining_useful_life": f"{round(rul / 14, 1)} Months" if rul else "Calculating...",
-        "current_capacity": round(latest['Capacity'], 2),
-        "original_capacity": round(latest['meta_rated_cap'], 2),
+        "current_capacity": float(round(latest['Capacity'], 2)),
+        "original_capacity": float(round(latest['meta_rated_cap'], 2)),
         "total_cycles": int(latest['cycle_number']),
         "efficiency": int(latest['capacity_rel'] * 100),
         "temperature": 24.0, # Ambient lab temp
@@ -273,15 +362,27 @@ def get_fleet_triage():
         rul = pred["predictions"].get("rul", {}).get("value_cycles")
         
         if soh is not None:
+            # Map group ID to human readable condition
+            gid = int(latest.get('meta_group_id', 0))
+            temp = float(latest.get('ambient_temperature', 24.0))
+            
+            group_name = "Room Temp (24°C)"
+            if temp > 30:
+                group_name = "Elevated Temp (43°C)"
+            elif temp < 10:
+                group_name = "Cold Temp (4°C)"
+
             fleet.append({
                 "battery_id": bid,
-                "soh": soh,
-                "rul": int(rul) if rul else 0, # Frontend expects number
+                "soh": float(soh),
+                "rul": int(rul) if rul else 0,
                 "status": "critical" if soh < 75 else ("warning" if soh < 86 else "good"),
-                "rul_months": round(rul / 14, 1) if rul else "Calculating...",
+                "rul_months": round(float(rul) / 14, 1) if rul else "Calculating...",
                 "total_cycles": int(latest['cycle_number']),
-                "temperature": 24.0, # Lab ambient
-                "regime": pred["predictions"].get("degradation_regime", "Calibrating... ⏳")
+                "temperature": temp,
+                "regime": pred["predictions"].get("degradation_regime", "NORMAL").replace("🟢", "").replace("🟡", "").replace("🔴", "").strip(),
+                "group_id": gid,
+                "group_name": group_name
             })
             
     # Sort by urgency (lowest SoH first)
@@ -350,28 +451,27 @@ def get_battery_health(battery_id):
     pred = _predictor.predict(latest.to_dict())
     soh = pred["predictions"].get("soh", {}).get("value_percent", 0)
     
-    # Generate REAL SoH history for the last 50 cycles (or all available)
-    history_view = battery_df.tail(50)
-    soh_history = history_view['SoH_Global'].round(2).tolist()
+    chart_payload = get_chart_payload(battery_id)
     
-    # Construct regime history (based on real labels for history)
+    # Map the labels for regime history based on the historical part of the chart
+    historical_soh = [x for x in chart_payload["datasets"][0]["data"] if x is not None]
     regime_history = []
-    for s in soh_history:
+    for s in historical_soh:
         if s > 88: regime_history.append("Normal")
         elif s > 78: regime_history.append("Accelerated")
         else: regime_history.append("Anomalous")
 
     return {
         "battery_id": battery_id,
-        "soh": soh,
-        "rul": pred["predictions"].get("rul", {}).get("value_cycles", 0),
+        "soh": float(soh),
+        "rul": int(pred["predictions"].get("rul", {}).get("value_cycles", 0)),
         "status": "critical" if soh < 75 else ("warning" if soh < 86 else "good"),
-        "rul_months": round(pred["predictions"].get("rul", {}).get("value_cycles", 0) / 14, 1),
+        "rul_months": round(float(pred["predictions"].get("rul", {}).get("value_cycles", 0)) / 14, 1),
         "total_cycles": int(latest['cycle_number']),
-        "temperature": 24.0, # Dataset is generally ambient lab temp
-        "soh_history": soh_history,
+        "temperature": float(latest.get('ambient_temperature', 24.0)),
+        "chart_data": chart_payload,
         "regime_history": regime_history,
-        "cycle_labels": [f"Cycle {int(c)}" for c in history_view['cycle_number'].tolist()],
+        "cycle_labels": chart_payload["labels"][:len(historical_soh)],
     }
 
 
@@ -405,11 +505,11 @@ def simulate_temperature(battery_id, temp):
 
     return {
         "battery_id": battery_id,
-        "base_rul": base_rul,
-        "temperature": temp,
-        "adjusted_rul": adjusted_rul,
-        "adjusted_rul_months": round(adjusted_rul / 14, 1),
-        "temp_impact_pct": impact_pct,
+        "base_rul": float(base_rul),
+        "temperature": float(temp),
+        "adjusted_rul": int(adjusted_rul),
+        "adjusted_rul_months": float(round(adjusted_rul / 14, 1)),
+        "temp_impact_pct": float(impact_pct),
     }
 
 
@@ -485,12 +585,12 @@ def get_chart_payload(battery_id):
     # 1. Historical Actual Data (Last 100 cycles)
     history = battery_df.tail(100)
     labels = [f"Cycle {int(c)}" for c in history['cycle_number']]
-    actual_data = history['SoH_Global'].round(2).tolist()
+    actual_data = [float(x) for x in history['SoH_Global'].round(2).tolist()]
     
     # 2. Predicted Data
     # Start the prediction dataset from the last actual point to connect them
     predicted_data = [None] * (len(actual_data) - 1)
-    last_val = actual_data[-1]
+    last_val = float(actual_data[-1])
     predicted_data.append(last_val)
     
     # Simple linear forecast for the next 50 cycles
@@ -506,7 +606,7 @@ def get_chart_payload(battery_id):
         labels.append(f"Cycle {int(history['cycle_number'].iloc[-1] + i)}")
         actual_data.append(None)
         last_val -= fade_per_cycle
-        predicted_data.append(round(max(0, last_val), 2))
+        predicted_data.append(round(float(max(0, last_val)), 2))
 
     return {
         "labels": labels,

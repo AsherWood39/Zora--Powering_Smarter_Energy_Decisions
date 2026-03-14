@@ -13,53 +13,63 @@
       <div class="skeleton" v-for="n in 6" :key="n"></div>
     </div>
 
-    <div v-else class="battery-list">
-      <div
-        v-for="battery in fleet"
-        :key="battery.battery_id"
-        class="battery-row"
-        :class="`status-${battery.status}`"
-        @click="$emit('select-battery', battery.battery_id)"
-      >
-        <!-- Status indicator -->
-        <div class="status-dot" :class="battery.status"></div>
-
-        <!-- Battery ID -->
-        <div class="battery-id">
-          <span class="id-label">{{ battery.battery_id }}</span>
-          <span class="regime-tag" :class="`regime-${battery.regime.toLowerCase()}`">
-            {{ battery.regime }}
-          </span>
+    <div v-else class="battery-groups">
+      <div v-for="(groupBatteries, groupName) in groupedFleet" :key="groupName" class="fleet-group">
+        <div class="group-header">
+          <span class="material-icons-round">science</span>
+          <h3>{{ groupName }}</h3>
+          <span class="group-count">{{ groupBatteries.length }} units</span>
         </div>
+        
+        <div class="battery-list">
+          <div
+            v-for="battery in groupBatteries"
+            :key="battery.battery_id"
+            class="battery-row"
+            :class="`status-${battery.status}`"
+            @click="$emit('select-battery', battery.battery_id)"
+          >
+            <!-- Status indicator -->
+            <div class="status-dot" :class="battery.status"></div>
 
-        <!-- SoH bar -->
-        <div class="soh-section">
-          <div class="soh-label">SoH</div>
-          <div class="soh-bar-wrap">
-            <div
-              class="soh-bar"
-              :class="battery.status"
-              :style="`width: ${battery.soh}%`"
-            ></div>
+            <!-- Battery ID -->
+            <div class="battery-id">
+              <span class="id-label">{{ battery.battery_id }}</span>
+              <span class="regime-tag" :class="`regime-${battery.regime.toLowerCase()}`">
+                {{ battery.regime }}
+              </span>
+            </div>
+
+            <!-- SoH bar -->
+            <div class="soh-section">
+              <div class="soh-label">SoH</div>
+              <div class="soh-bar-wrap">
+                <div
+                  class="soh-bar"
+                  :class="battery.status"
+                  :style="`width: ${battery.soh}%`"
+                ></div>
+              </div>
+              <div class="soh-value">{{ battery.soh.toFixed(1) }}%</div>
+            </div>
+
+            <!-- RUL -->
+            <div class="rul-section">
+              <div class="rul-value">{{ battery.rul }} cycles</div>
+              <div class="rul-months">~{{ battery.rul_months }} months</div>
+            </div>
+
+            <!-- Temp -->
+            <div class="temp-section">
+              <span class="material-icons-round temp-icon">thermostat</span>
+              {{ battery.temperature }}°C
+            </div>
+
+            <!-- Arrow -->
+            <div class="arrow">
+              <span class="material-icons-round">chevron_right</span>
+            </div>
           </div>
-          <div class="soh-value">{{ battery.soh.toFixed(1) }}%</div>
-        </div>
-
-        <!-- RUL -->
-        <div class="rul-section">
-          <div class="rul-value">{{ battery.rul }} cycles</div>
-          <div class="rul-months">~{{ battery.rul_months }} months</div>
-        </div>
-
-        <!-- Temp -->
-        <div class="temp-section">
-          <span class="material-icons-round temp-icon">thermostat</span>
-          {{ battery.temperature }}°C
-        </div>
-
-        <!-- Arrow -->
-        <div class="arrow">
-          <span class="material-icons-round">chevron_right</span>
         </div>
       </div>
     </div>
@@ -78,6 +88,16 @@ const loading = ref(true);
 const criticalCount = computed(() => fleet.value.filter(b => b.status === 'critical').length);
 const warningCount  = computed(() => fleet.value.filter(b => b.status === 'warning').length);
 const goodCount     = computed(() => fleet.value.filter(b => b.status === 'good').length);
+
+const groupedFleet = computed(() => {
+  const groups = {};
+  fleet.value.forEach(battery => {
+    const name = battery.group_name || 'General';
+    if (!groups[name]) groups[name] = [];
+    groups[name].push(battery);
+  });
+  return groups;
+});
 
 onMounted(async () => {
   try {
@@ -138,6 +158,41 @@ onMounted(async () => {
 @keyframes shimmer {
   0%   { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+/* Grouping styles */
+.fleet-group {
+  margin-bottom: 2rem;
+}
+
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.group-header h3 {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #94a3b8;
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.group-header .material-icons-round {
+  font-size: 1.1rem;
+  color: #6366f1;
+}
+
+.group-count {
+  font-size: 0.7rem;
+  color: #475569;
+  margin-left: auto;
+  font-weight: 600;
 }
 
 /* Battery rows */
