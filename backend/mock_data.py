@@ -17,14 +17,18 @@ _predictor = ZoraPredictor()
 _cached_df = None
 
 def _get_data():
-    """Lazy loader for the feature dataset."""
+    """Smart loader for the feature dataset with auto-reload if previously empty."""
     global _cached_df
-    if _cached_df is None:
+    if _cached_df is None or _cached_df.empty:
         if os.path.exists(FEATS_PATH):
-            _cached_df = pd.read_csv(FEATS_PATH)
+            try:
+                # Reload if file exists, even if we previously cached an empty one
+                _cached_df = pd.read_csv(FEATS_PATH)
+            except Exception as e:
+                _cached_df = pd.DataFrame()
         else:
-            print(f"Warning: {FEATS_PATH} does not exist yet. Using empty DataFrame.")
-            _cached_df = pd.DataFrame()
+            if _cached_df is None:
+                _cached_df = pd.DataFrame()
     return _cached_df
 
 # ---------------------------
@@ -217,7 +221,6 @@ Base your recommendations on the actual battery condition above."""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STUB DATA — Powers the new Day 2 routes. Replace with real model on Day 4.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Mock fleet: 8 batteries with realistic degradation values

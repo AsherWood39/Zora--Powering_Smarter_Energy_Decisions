@@ -96,7 +96,7 @@
        <div class="perf-stats">
           <div class="perf-item">
             <strong>SoH Accuracy (R²)</strong>
-            <span>{{ (analytics.model_performance?.soh_r2 * 100).toFixed(1) }}% Accuracy</span>
+            <span>{{ analytics.model_performance?.soh_r2 ? (analytics.model_performance.soh_r2 * 100).toFixed(1) + '%' : '---' }} Accuracy</span>
           </div>
           <div class="perf-item">
              <strong>RUL Error (MAE)</strong>
@@ -125,8 +125,19 @@ const fetchAnalytics = async () => {
       axios.get('/api/fleet/triage'),
       axios.get('/api/analytics/summary')
     ]);
-    fleet.value = fleetRes.data;
-    analytics.value = analyticsRes.data;
+    
+    console.log('[DEBUG] Fleet API Response:', fleetRes.data);
+    console.log('[DEBUG] Analytics API Response:', analyticsRes.data);
+    
+    // Safety check: ensure fleetRes.data is an array
+    if (Array.isArray(fleetRes.data)) {
+        fleet.value = fleetRes.data;
+    } else {
+        console.warn('[DEBUG] Fleet API returned non-array:', fleetRes.data);
+        fleet.value = [];
+    }
+    
+    analytics.value = analyticsRes.data || {};
   } catch (err) {
     console.error('Failed to fetch analytics:', err);
   } finally {
@@ -136,6 +147,8 @@ const fetchAnalytics = async () => {
 
 const counts = computed(() => {
   const c = { good: 0, warning: 0, critical: 0 };
+  if (!Array.isArray(fleet.value)) return c;
+  
   fleet.value.forEach(b => {
     if (b.status === 'good') c.good++;
     else if (b.status === 'warning') c.warning++;
@@ -145,14 +158,21 @@ const counts = computed(() => {
 });
 
 const avgSoH = computed(() => {
-  if (fleet.value.length === 0) return 0;
-  const total = fleet.value.reduce((acc, b) => acc + b.soh, 0);
-  return Math.round(total / fleet.value.length);
+  if (!Array.isArray(fleet.value) || fleet.value.length === 0) return 0;
+  try {
+    const total = fleet.value.reduce((acc, b) => acc + (b.soh || 0), 0);
+    return Math.round(total / fleet.value.length);
+  } catch (e) {
+    console.error("Scale error in avgSoH:", e);
+    return 0;
+  }
 });
 
 const risks = computed(() => {
+  if (!Array.isArray(fleet.value)) return [];
   // Return top 3 batteries with lowest RUL
   return [...fleet.value]
+    .filter(b => b.rul !== undefined)
     .sort((a, b) => a.rul - b.rul)
     .slice(0, 3);
 });
