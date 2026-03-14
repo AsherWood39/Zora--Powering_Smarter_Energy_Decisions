@@ -187,29 +187,49 @@ const fetchSimulation = async (temp) => {
 
 const renderChart = () => {
   const canvas = document.getElementById(`soh-chart-${props.batteryId}`);
-  if (!canvas || !data.value) return;
+  if (!canvas || !data.value || !data.value.chart_data) return;
 
   if (chartInstance) chartInstance.destroy();
 
   const ctx = canvas.getContext('2d');
-  const gradient = ctx.createLinearGradient(0, 0, 0, 250);
-  gradient.addColorStop(0, 'rgba(99, 102, 241, 0.3)');
-  gradient.addColorStop(1, 'rgba(99, 102, 241, 0.0)');
+  
+  // Historical Gradient
+  const histGradient = ctx.createLinearGradient(0, 0, 0, 250);
+  histGradient.addColorStop(0, 'rgba(16, 185, 129, 0.2)');
+  histGradient.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
+
+  // Predicted Gradient
+  const predGradient = ctx.createLinearGradient(0, 0, 0, 250);
+  predGradient.addColorStop(0, 'rgba(245, 158, 11, 0.15)');
+  predGradient.addColorStop(1, 'rgba(245, 158, 11, 0.0)');
 
   chartInstance = new Chart(ctx, {
     type: 'line',
     data: {
-      labels: data.value.cycle_labels,
-      datasets: [{
-        label: 'State of Health (%)',
-        data: data.value.soh_history,
-        borderColor: '#818cf8',
-        backgroundColor: gradient,
-        borderWidth: 2.5,
-        fill: true,
-        pointRadius: 0,
-        tension: 0.4,
-      }]
+      labels: data.value.chart_data.labels,
+      datasets: [
+        {
+          label: 'Historical Capacity',
+          data: data.value.chart_data.datasets[0].data,
+          borderColor: '#10b981',
+          backgroundColor: histGradient,
+          borderWidth: 2.5,
+          fill: true,
+          pointRadius: 0,
+          tension: 0.4,
+        },
+        {
+          label: 'Predicted Degradation',
+          data: data.value.chart_data.datasets[1].data,
+          borderColor: '#f59e0b',
+          backgroundColor: predGradient,
+          borderWidth: 2.5,
+          borderDash: [5, 5],
+          fill: true,
+          pointRadius: 0,
+          tension: 0.4,
+        }
+      ]
     },
     options: {
       responsive: true,
@@ -226,14 +246,20 @@ const renderChart = () => {
         }
       },
       scales: {
-        x: { grid: { display: false }, ticks: { color: '#64748b', maxTicksLimit: 6 } },
+        x: { grid: { display: false }, ticks: { color: '#64748b', maxTicksLimit: 8 } },
         y: {
           grid: { color: '#334155', borderDash: [2, 4] },
           ticks: { color: '#64748b', callback: v => v + '%' },
-          min: Math.floor(Math.min(...data.value.soh_history) - 3),
-          max: Math.ceil(Math.max(...data.value.soh_history) + 2),
+          // Smarter Y axis scaling
+          suggestedMin: 60,
+          suggestedMax: 100
         }
       },
+      interaction: {
+        mode: 'nearest',
+        axis: 'x',
+        intersect: false
+      }
     }
   });
 };

@@ -80,6 +80,18 @@ def extract_advanced_ts_features(df):
         else: relax_slope, relax_recovery = 0, 0
     except: relax_slope, relax_recovery = 0, 0
         
+    # 5. THERMAL DELTA & OPERATING TEMP
+    try:
+        if 'Temperature_measured' in active.columns:
+            peak_temp = active['Temperature_measured'].max()
+            mean_temp = active['Temperature_measured'].mean()
+        else:
+            peak_temp = 0
+            mean_temp = 0
+    except:
+        peak_temp = 0
+        mean_temp = 0
+        
     return {
         'ts_duration': active['Time'].iloc[-1],
         'ts_v_drop': active['Voltage_measured'].iloc[0] - active['Voltage_measured'].iloc[-1],
@@ -89,14 +101,16 @@ def extract_advanced_ts_features(df):
         'ts_ica_peak': ica_peak,
         'ts_relax_slope': relax_slope,
         'ts_relax_recovery': relax_recovery,
-        'ts_v_std': active['Voltage_measured'].std()
+        'ts_v_std': active['Voltage_measured'].std(),
+        'ts_peak_temp': peak_temp,
+        'ts_mean_temp': mean_temp
     }
 
 def data_pipeline():
     print("Loading base metadata...")
     df = pd.read_csv(METADATA_PATH)
     
-    for col in ['Capacity', 'Re', 'Rct', 'uid']:
+    for col in ['Capacity', 'Re', 'Rct', 'uid', 'ambient_temperature']:
         if col in df.columns: df[col] = pd.to_numeric(df[col], errors='coerce')
     
     discharge = df[df['type'] == 'discharge'].copy()
@@ -139,21 +153,43 @@ def data_pipeline():
     # Zora-DOC Lessons 2 & 6: We divide Capacity by Rated Cap for SoH %.
     discharge['SoH_Global'] = (discharge['Capacity'] / discharge['meta_rated_cap'].fillna(2.0) * 100).clip(upper=100)
 
-    # RUL Calculation (Cycles until 1.4 Ahr threshold)
-    EOL_THRESHOLD = 1.4  # Ahr
-    eol_cycle = (
+    # RUL Calculation (Cycles until 1.6 Ahr threshold, which is 80% of 2.0 Ahr)
+    EOL_THRESHOLD = 1.6  # Ahr
+    
+    # 1. Identify when they actually crossed the line
+    eol_cycle_map = (
         discharge[discharge['Capacity'] < EOL_THRESHOLD]
         .groupby('battery_id')['cycle_number'].min()
     )
-    discharge['first_eol_cycle'] = discharge['battery_id'].map(eol_cycle)
-    max_cycle = discharge.groupby('battery_id')['cycle_number'].transform('max')
-    discharge['RUL'] = np.where(
-        discharge['first_eol_cycle'].isna(),
-        max_cycle - discharge['cycle_number'],
-        discharge['first_eol_cycle'] - discharge['cycle_number']
-    )
-    discharge['RUL'] = discharge['RUL'].clip(lower=0)
-    discharge.drop(columns=['first_eol_cycle'], inplace=True)
+    
+    # 2. Calculate average fade rate for projection
+    # (Initial Capacity - Current Capacity) / Current Cycle count
+    discharge['fade_per_cycle'] = (discharge['cap_base'] - discharge['Capacity']) / discharge['cycle_number']
+    # Filter for realistic fade (positive and not zero)
+    discharge['fade_per_cycle'] = discharge['fade_per_cycle'].apply(lambda x: max(0.0001, x))
+    
+    def calculate_rul(row):
+        bid = row['battery_id']
+        curr_cycle = row['cycle_number']
+        curr_cap = row['Capacity']
+        
+        # If we know exactly when it died...
+        if bid in eol_cycle_map:
+            eol_cycle = eol_cycle_map[bid]
+            return max(0, eol_cycle - curr_cycle)
+        
+        # Else, project based on fade rate
+        # RUL = (Current Cap - Threshold) / Fade Rate
+        if curr_cap > EOL_THRESHOLD:
+            proj_rul = (curr_cap - EOL_THRESHOLD) / row['fade_per_cycle']
+            return round(proj_rul)
+        else:
+            return 0 # Should have been in eol_cycle_map but just in case
+
+    print("Projecting RUL for healthy batteries...")
+    discharge['RUL'] = discharge.apply(calculate_rul, axis=1)
+    discharge['RUL'] = discharge['RUL'].clip(lower=0, upper=500) # Sanity cap
+    discharge.drop(columns=['fade_per_cycle'], inplace=True)
 
     # Impedance Merge
     print("Merging impedance & computing growth...")
@@ -188,8 +224,21 @@ def data_pipeline():
     ts_df = pd.DataFrame.from_dict(ts_map, orient='index').reset_index().rename(columns={'index': 'filename'})
     discharge = pd.merge(discharge, ts_df, on='filename', how='left')
 
-    # --- AFTER TS MERGE: ROLLING FEATURES ---
+    # --- AFTER TS MERGE: ROLLING FEATURES & THERMAL DELTA ---
     discharge['voltage_drop_roll_mean'] = discharge.groupby('battery_id')['ts_v_drop'].transform(lambda x: x.rolling(5, min_periods=2).mean()).fillna(0)
+    
+    # Calculate Thermal Delta (Operating Temp vs Ambient)
+    # If ambient_temperature is missing, assume 24.0 (room temp)
+    if 'ambient_temperature' in discharge.columns:
+        discharge['ambient_temperature'] = discharge['ambient_temperature'].fillna(24.0)
+    else:
+        discharge['ambient_temperature'] = 24.0
+        
+    if 'ts_peak_temp' in discharge.columns:
+        discharge['thermal_delta'] = discharge['ts_peak_temp'] - discharge['ambient_temperature']
+        discharge['thermal_delta'] = discharge['thermal_delta'].clip(lower=0) # Temp shouldn't drop below ambient normally during active discharge
+    else:
+        discharge['thermal_delta'] = 0.0
 
     # Step D: Early Manufacturing Fingerprints
     # Zora-DOC Lesson 8: Taking the mean of the first 10 cycles as a fixed "DNA" trait for the battery's entire life.

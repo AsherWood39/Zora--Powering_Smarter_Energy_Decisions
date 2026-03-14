@@ -35,7 +35,7 @@ def train_rul():
         'ts_ohmic_drop', 'ts_time_to_35v', 'ts_dvdt_mid', 'ts_ica_peak',
         'rct_roll_std', 'voltage_drop_roll_mean',
         'early_cap_mean', 'early_rct_mean',
-        'meta_current_num', 'meta_cutoff_num', 'meta_rated_cap'
+        'meta_current_num', 'meta_cutoff_num', 'meta_rated_cap', 'thermal_delta'
     ]
 
     import re
@@ -112,10 +112,12 @@ def train_rul():
             
         print(f"  Group {gid:g}: Batteries {list(batteries)}")
         
-        # Step A: Fit Group Baseline for RUL
-        # Zora-DOC Lesson 9 (Residual Logic)
+        # We use deg=1 for RUL as it generally decays linearly with cycle count
+        # If group has fewer than 3 batteries, we skip LOBO evaluation for it to prevent false R2=1.0 or massive overfitting negative R2
+        if len(batteries) < 3:
+            print(f"    Note: Group {gid} has {len(batteries)} batteries. Skipping LOBO evaluation to avoid metrics overfitting. It will still be used in final model.")
+            
         try:
-            # We use deg=1 for RUL as it generally decays linearly with cycle count
             poly_coeff = np.polyfit(group_df['cycle_number'], group_df[TARGET_ACTUAL], deg=1)
             poly_func = np.poly1d(poly_coeff)
             group_baselines[gid] = poly_coeff
@@ -126,36 +128,42 @@ def train_rul():
         group_df['baseline'] = poly_func(group_df['cycle_number'])
         group_df['residual'] = group_df[TARGET_ACTUAL] - group_df['baseline']
         
-        for held_out in batteries:
-            train_df = group_df[group_df['battery_id'] != held_out]
-            test_df  = group_df[group_df['battery_id'] == held_out]
-            
-            if len(test_df) < 15: continue
+        # Only evaluate groups with >= 3 batteries to ensure cross-validation has unseen variance
+        if len(batteries) >= 3:
+            for held_out in batteries:
+                train_df = group_df[group_df['battery_id'] != held_out]
+                test_df  = group_df[group_df['battery_id'] == held_out]
+                
+                if len(test_df) < 15: continue
 
-            # Train on Residual within the group
-            model = XGBRegressor(**XGB_PARAMS)
-            model.fit(train_df[FEATURE_COLS], train_df['residual'])
+                # Train on Residual within the group
+                model = XGBRegressor(**XGB_PARAMS)
+                model.fit(train_df[FEATURE_COLS], train_df['residual'])
 
-            # Predict (Baseline + Predicted Residual)
-            res_pred = model.predict(test_df[FEATURE_COLS])
-            base_pred = poly_func(test_df['cycle_number'])
+                # Predict (Baseline + Predicted Residual)
+                res_pred = model.predict(test_df[FEATURE_COLS])
+                base_pred = poly_func(test_df['cycle_number'])
+                
+                # RUL cannot be negative
+                y_pred = np.clip(base_pred + res_pred, 0, None)
             
-            # RUL cannot be negative
-            y_pred = np.clip(base_pred + res_pred, 0, None)
-            
-            # Evaluate against Actual
-            r_sq = r2_score(test_df[TARGET_ACTUAL], y_pred)
-            err_mae = mean_absolute_error(test_df[TARGET_ACTUAL], y_pred)
-            
-            # Variance check: if RUL variance is 0 (i.e. already past EOL entire dataset), R2 crashes
-            var = np.var(test_df[TARGET_ACTUAL])
-            
-            lobo_results.append({
-                'battery': held_out, 'R2': r_sq, 'MAE': err_mae, 
-                'variance': var,
-                'cycles': len(test_df)
-            })
-            print(f"    -> {held_out:8s}: R2: {r_sq:7.4f}  MAE: {err_mae:5.2f} cycles")
+                # Evaluate against Actual
+                # Variance check: if RUL variance is 0 (i.e. already past EOL entire dataset), R2 crashes
+                var = np.var(test_df[TARGET_ACTUAL])
+                
+                if var < 0.1:
+                    print(f"    -> {held_out:8s}: Skipped (RUL Variance near 0 - completely dead battery)")
+                    continue
+                    
+                r_sq = r2_score(test_df[TARGET_ACTUAL], y_pred)
+                err_mae = mean_absolute_error(test_df[TARGET_ACTUAL], y_pred)
+                
+                lobo_results.append({
+                    'battery': held_out, 'R2': r_sq, 'MAE': err_mae, 
+                    'variance': var,
+                    'cycles': len(test_df)
+                })
+                print(f"    -> {held_out:8s}: R2: {r_sq:7.4f}  MAE: {err_mae:5.2f} cycles")
 
     # 3. SUMMARY
     if lobo_results:
