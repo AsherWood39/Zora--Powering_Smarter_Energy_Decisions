@@ -289,7 +289,7 @@ const fetchSimulation = async () => {
 };
 
 const handleExport = () => {
-  window.open(`http://127.0.0.1:5000/api/export/report?battery_id=${props.batteryId}`, '_blank');
+  window.open(`/api/export/report?battery_id=${props.batteryId}`, '_blank');
 };
 
 const renderChart = () => {
