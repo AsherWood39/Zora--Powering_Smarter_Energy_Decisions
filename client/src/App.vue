@@ -43,7 +43,7 @@
           <template v-else-if="currentView === 'detail'"> / <span @click="currentView='fleet'; selectedBattery=null" class="breadcrumb-link">Fleet Triage</span> / <span class="current">{{ selectedBattery }}</span></template>
         </div>
         <div class="actions">
-          <button class="primary-btn">Export Report</button>
+          <button v-if="currentView === 'dashboard'" class="primary-btn">Export Report</button>
         </div>
       </header>
 
