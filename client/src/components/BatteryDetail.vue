@@ -171,6 +171,8 @@
             </div>
           </div>
         </div>
+      </div>
+
       <!-- AI Recommendations -->
       <div v-if="data.recommendations" class="card reco-card">
         <div class="card-header">
