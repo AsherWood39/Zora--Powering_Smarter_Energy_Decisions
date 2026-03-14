@@ -568,7 +568,7 @@ def _get_dataset_threshold(battery_id):
         pass
     return 70.0 # Standard fallback
 
-def get_battery_health(battery_id):
+
 def get_battery_health_details(battery_id):
     """
     Returns health details for a specific battery using REAL historical data.
