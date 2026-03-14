@@ -53,6 +53,26 @@
     <div class="card reco-card">
       <div class="card-header">
         <h2>Smart Recommendations</h2>
+        <div class="strategy-badge">
+           <span class="material-icons-round">psychology</span>
+           AI Powered
+        </div>
+      </div>
+      
+      <!-- Personalization Section -->
+      <div class="personalization-panel">
+        <label for="strategy">🔧 Fleet Maintenance Strategy</label>
+        <div class="input-row">
+            <textarea 
+                id="strategy" 
+                v-model="strategy" 
+                placeholder="e.g. Prioritize battery longevity and second-life safety..."
+            ></textarea>
+            <button @click="updateStrategy" :disabled="saving" class="save-btn">
+                {{ saving ? 'Saving...' : 'Update Strategy' }}
+            </button>
+        </div>
+        <p class="strategy-hint">This prompt instructs the AI on how to tailor its advice for your specific fleet goals.</p>
       </div>
       <div class="reco-list">
         <div 
@@ -85,6 +105,8 @@ import Chart from 'chart.js/auto';
 
 const stats = ref(null);
 const recommendations = ref([]);
+const strategy = ref('');
+const saving = ref(false);
 
 const getIcon = (severity) => {
   if (severity === 'high') return 'error';
@@ -169,16 +191,128 @@ const renderChart = async () => {
   }
 };
 
+const fetchRecommendations = async () => {
+    try {
+        const response = await axios.get('http://127.0.0.1:5000/api/dashboard');
+        recommendations.value = response.data.recommendations;
+        stats.value = response.data.stats;
+    } catch (err) {
+        console.error("Failed to fetch dashboard data:", err);
+    }
+};
+
+const updateStrategy = async () => {
+    saving.value = true;
+    try {
+        await axios.post('http://127.0.0.1:5000/api/preferences', { strategy: strategy.value });
+        // Refresh recommendations with new strategy
+        await fetchRecommendations();
+    } catch (err) {
+        console.error("Failed to save strategy:", err);
+    } finally {
+        saving.value = false;
+    }
+};
+
 onMounted(async () => {
   try {
-    const response = await axios.get('http://127.0.0.1:5000/api/dashboard');
-    stats.value = response.data.stats;
-    recommendations.value = response.data.recommendations;
+    // 1. Get initial preferences
+    const prefRes = await axios.get('http://127.0.0.1:5000/api/preferences');
+    strategy.value = prefRes.data.strategy;
+
+    // 2. Get dashboard data
+    await fetchRecommendations();
     
-    // Wait for DOM update then render chart
+    // 3. Wait for DOM update then render chart
     setTimeout(renderChart, 100); 
   } catch (err) {
-    console.error("Failed to fetch dashboard data:", err);
+    console.error("Initialization error:", err);
   }
 });
 </script>
+
+<style scoped>
+/* Previous styles... (keeping existing) */
+.personalization-panel {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.personalization-panel label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #818cf8;
+  margin-bottom: 0.8rem;
+}
+
+.input-row {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+textarea {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #f1f5f9;
+  padding: 0.8rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+  resize: vertical;
+  min-height: 60px;
+}
+
+textarea:focus {
+  outline: none;
+  border-color: #6366f1;
+}
+
+.save-btn {
+  background: #6366f1;
+  color: white;
+  border: none;
+  padding: 0.8rem 1.2rem;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.save-btn:hover:not(:disabled) {
+  background: #4f46e5;
+  transform: translateY(-2px);
+}
+
+.save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.strategy-hint {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-top: 0.5rem;
+}
+
+.strategy-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    font-weight: 800;
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.1);
+    padding: 0.3rem 0.6rem;
+    border-radius: 20px;
+}
+</style>

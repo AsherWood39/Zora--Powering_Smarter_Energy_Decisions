@@ -10,6 +10,26 @@ from ml.predict import ZoraPredictor
 # --- REAL ML INTEGRATION ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FEATS_PATH = os.path.join(BASE_DIR, "ml/results/final_features.csv")
+PREFS_PATH = os.path.join(BASE_DIR, "ml/results/user_preferences.json")
+
+def get_user_preferences():
+    """Load user preferences (like maintenance strategy)."""
+    if os.path.exists(PREFS_PATH):
+        try:
+            with open(PREFS_PATH, 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    return {"strategy": "General optimization focusing on safety and longevity."}
+
+def save_user_preferences(prefs):
+    """Save user preferences to disk."""
+    try:
+        with open(PREFS_PATH, 'w') as f:
+            json.dump(prefs, f)
+        return True
+    except:
+        return False
 TRIAGE_RULES_PATH = os.path.join(BASE_DIR, "ml/results/fleet_triage_rules.json")
 
 # Initialize real-time components
@@ -32,14 +52,13 @@ def _get_data():
     return _cached_df
 
 # ---------------------------
-
 # Load environment variables from .env file
 load_dotenv()
 
 # Initialize Groq client
 _groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
-def get_battery_stats(battery_id="B0005"):
+def get_dashboard_stats(battery_id="B0005"):
     """
     Returns current battery status and KPI metrics using real ML predictions.
     """
@@ -99,6 +118,10 @@ def get_recommendations(battery_data=None):
         list: A list of 3 recommendation dicts with keys: id, title, description, severity
     """
 
+    # Get personalized strategy
+    prefs = get_user_preferences()
+    user_strategy = prefs.get("strategy", "General optimization focusing on safety and longevity.")
+
     # --- Real-aware defaults if no data is provided ---
     if battery_data is None:
         df = _get_data()
@@ -112,6 +135,7 @@ def get_recommendations(battery_data=None):
                 "soh": round(pred["predictions"].get("soh", {}).get("value_percent", 87), 1),
                 "rul": int(pred["predictions"].get("rul", {}).get("value_cycles", 45)),
                 "regime": pred["predictions"].get("degradation_regime", "Normal 🟢"),
+                "re": round(float(latest.get('Re', 0)), 4),
                 "temperature": 24.0,
                 "total_cycles": int(latest['cycle_number']),
             }
@@ -121,46 +145,35 @@ def get_recommendations(battery_data=None):
                 "soh": 87.0,
                 "rul": 45,
                 "regime": "Normal",
+                "re": 0.075,
                 "temperature": 24.0,
                 "total_cycles": 420,
             }
 
-    # Build a clear prompt with the battery's actual condition
-    prompt = f"""You are an expert battery health analyst for an EV fleet management system.
-
-A battery named {battery_data.get('battery_id', 'Unknown')} has the following metrics:
-- State of Health (SoH): {battery_data.get('soh', 'N/A')}%
-- Remaining Useful Life (RUL): {battery_data.get('rul', 'N/A')} cycles
-- Operating Regime: {battery_data.get('regime', 'N/A')} (Normal / Accelerated / Anomalous)
-- Ambient Temperature: {battery_data.get('temperature', 'N/A')}°C
-- Total Cycles Completed: {battery_data.get('total_cycles', 'N/A')}
-
-Based on this data, provide exactly 3 specific, actionable maintenance recommendations.
-
-Respond ONLY with a valid JSON array in this exact format (no extra text, no markdown):
-[
-  {{
-    "id": 1,
-    "title": "Short title here",
-    "description": "One or two sentence explanation with specific advice.",
-    "severity": "high"
-  }},
-  {{
-    "id": 2,
-    "title": "Short title here",
-    "description": "One or two sentence explanation with specific advice.",
-    "severity": "medium"
-  }},
-  {{
-    "id": 3,
-    "title": "Short title here",
-    "description": "One or two sentence explanation with specific advice.",
-    "severity": "low"
-  }}
-]
-
-Severity must be exactly one of: "high", "medium", or "low".
-Base your recommendations on the actual battery condition above."""
+    # Build a high-fidelity engineering prompt
+    prompt = f"""
+    You are ZORA, an Advanced Fleet Intelligence System.
+    Subject: Unit {battery_data.get('battery_id')}
+    Strategy Directive: "{user_strategy}"
+    
+    Technical Profile:
+    - SoH: {battery_data.get('soh')}%
+    - Predicted RUL: {battery_data.get('rul')} cycles
+    - Degradation Regime: {battery_data.get('regime')}
+    - Internal Resistance (Re): {battery_data.get('re')} Ω
+    - Ambient Temperature: {battery_data.get('temperature')}°C
+    - Cumulative Experience: {battery_data.get('total_cycles')} cycles
+    
+    TASK: Provide 3 granular, engineering-grade "Priority Actions".
+    STYLE: Do NOT use generic titles like "Immediate Replacement". Use specific procedural directives.
+    EXAMPLE: "Recalibrate BMS Lower-Cutoff (V)", "Initiate Accelerated Thermal Stabilization", or "Transition to ESS Duty Cycle".
+    
+    NASA DATASET CONTEXT (Physics-Aware):
+    - Re > 0.09 Ω signifies significant SEI thickening and potential lithium plating.
+    - If regime is "Critical", degradation is non-linear; immediate surgical intervention is required.
+    
+    Respond ONLY with a JSON list of 3 objects: {{"id": int, "title": "Technical Action", "description": "Concise justification referencing {battery_data.get('battery_id')}'s metrics.", "severity": "high/medium/low"}}.
+    """
 
     try:
         response = _groq_client.chat.completions.create(
@@ -335,7 +348,7 @@ def get_most_critical_battery_id():
     return fleet[0]["battery_id"]
 
 
-def get_battery_health(battery_id):
+def get_battery_health_details(battery_id):
     """
     Returns health details for a specific battery using REAL historical data.
     """
@@ -465,7 +478,7 @@ def get_degradation_chart_data():
          # To connect them, the 180th point (index 179) should probably be the start.
     }
 
-def get_chart_payload(battery_id):
+def get_historical_data(battery_id):
     """
     Returns real historical data and predictive trend for the dashboard chart.
     """
