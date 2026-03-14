@@ -633,6 +633,17 @@ def get_battery_health_details(battery_id):
     # Consistent regime based on SoH thresholds for visual clarity
     current_regime = "NORMAL" if soh >= 86 else ("WARNING" if soh >= 75 else "CRITICAL")
 
+    # Generate personalized recommendations
+    recos = get_recommendations({
+        "battery_id": battery_id,
+        "soh": round(float(soh), 1),
+        "rul": int(pred["predictions"].get("rul", {}).get("value_cycles", 0)),
+        "regime": current_regime,
+        "re": round(float(latest.get('Re', 0)), 4),
+        "temperature": float(latest.get('ambient_temperature', 24.0)),
+        "total_cycles": int(latest['cycle_number']),
+    })
+
     return {
         "battery_id": battery_id,
         "soh": float(soh),
@@ -646,6 +657,7 @@ def get_battery_health_details(battery_id):
         "regime": current_regime,
         "regime_history": regime_history,
         "cycle_labels": chart_payload["labels"][:len(historical_soh)],
+        "recommendations": recos
     }
 
 

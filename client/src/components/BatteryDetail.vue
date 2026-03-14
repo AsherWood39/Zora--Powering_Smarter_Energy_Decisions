@@ -171,6 +171,37 @@
             </div>
           </div>
         </div>
+      <!-- AI Recommendations -->
+      <div v-if="data.recommendations" class="card reco-card">
+        <div class="card-header">
+          <div class="header-main">
+            <h3>Smart Maintenance Directives</h3>
+            <p class="chart-sub">AI-prioritized actions for unit {{ batteryId }}</p>
+          </div>
+          <div class="strategy-badge">
+             <span class="material-icons-round">psychology</span>
+             Expert Intelligence
+          </div>
+        </div>
+        <div class="reco-list">
+          <div 
+            v-for="(reco, index) in data.recommendations" 
+            :key="index"
+            class="reco-item" 
+            :class="`priority-${reco.severity}`"
+          >
+            <div class="reco-icon">
+              <span class="material-icons-round">
+                {{ getIcon(reco.severity) }}
+              </span>
+            </div>
+            <div class="reco-content">
+              <h4>{{ reco.title }}</h4>
+              <p>{{ reco.description }}</p>
+            </div>
+            <button class="action-btn">Optimize</button>
+          </div>
+        </div>
       </div>
     </template>
 
@@ -185,6 +216,12 @@ import Chart from 'chart.js/auto';
 import annotationPlugin from 'chartjs-plugin-annotation';
 
 Chart.register(annotationPlugin);
+
+const getIcon = (severity) => {
+  if (severity === 'high') return 'error';
+  if (severity === 'medium') return 'warning';
+  return 'check_circle';
+};
 
 const props = defineProps({ batteryId: String });
 const emit  = defineEmits(['go-back']);
@@ -645,6 +682,41 @@ const renderChart = () => {
 }
 .skeleton.tall  { height: 280px; }
 .skeleton.short { height: 120px; }
+
+/* Recommendations */
+.reco-card { border: 1px solid rgba(99,102,241,0.2); }
+.strategy-badge {
+    display: flex; align-items: center; gap: 0.4rem;
+    font-size: 0.7rem; text-transform: uppercase; font-weight: 800;
+    color: #10b981; background: rgba(16, 185, 129, 0.1);
+    padding: 0.3rem 0.6rem; border-radius: 20px;
+}
+.reco-list { display: flex; flex-direction: column; gap: 0.8rem; margin-top: 0.5rem; }
+.reco-item {
+  display: flex; align-items: flex-start; gap: 1rem;
+  background: rgba(255,255,255,0.03); border-radius: 12px;
+  padding: 1rem; border: 1px solid transparent; transition: all 0.2s;
+}
+.reco-item:hover { background: rgba(255,255,255,0.06); transform: translateX(4px); }
+.reco-item.priority-high { border-left: 4px solid #ef4444; background: rgba(239, 68, 68, 0.05); }
+.reco-item.priority-medium { border-left: 4px solid #f59e0b; background: rgba(245, 158, 11, 0.05); }
+.reco-item.priority-low { border-left: 4px solid #10b981; background: rgba(16, 185, 129, 0.05); }
+
+.reco-icon { flex-shrink: 0; margin-top: 0.1rem; }
+.priority-high .reco-icon { color: #f87171; }
+.priority-medium .reco-icon { color: #fbbf24; }
+.priority-low .reco-icon { color: #34d399; }
+
+.reco-content { flex: 1; }
+.reco-content h4 { font-size: 0.95rem; font-weight: 700; color: #f1f5f9; margin: 0 0 0.2rem 0; }
+.reco-content p { font-size: 0.82rem; color: #94a3b8; line-height: 1.5; margin: 0; }
+
+.action-btn {
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1);
+  color: #e2e8f0; border-radius: 6px; padding: 0.4rem 0.8rem;
+  font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;
+}
+.action-btn:hover { background: var(--accent-primary); border-color: transparent; }
 @keyframes shimmer {
   0% { background-position: 200% 0; } 100% { background-position: -200% 0; }
 }
