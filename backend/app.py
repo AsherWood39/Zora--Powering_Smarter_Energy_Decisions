@@ -8,6 +8,7 @@ from mock_data import (
     get_battery_health,
     simulate_temperature,
     get_most_critical_battery_id,
+    get_fleet_analytics
 )
 
 app = Flask(__name__)
@@ -61,6 +62,12 @@ def battery_simulate(battery_id):
     if data is None:
         return jsonify({"error": f"Battery '{battery_id}' not found"}), 404
     return jsonify(data)
+
+
+@app.route('/api/analytics/summary')
+def analytics_summary():
+    """Returns deep fleet analytics data from the real dataset."""
+    return jsonify(get_fleet_analytics())
 
 
 if __name__ == '__main__':

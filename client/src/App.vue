@@ -14,13 +14,13 @@
           <span class="material-icons-round">directions_car</span>
           Fleet
         </a>
-        <a href="#" :class="{ active: currentView === 'model-info' }" @click.prevent="currentView = 'model-info'; selectedBattery = null">
+        <a href="#" :class="{ active: currentView === 'analytics' }" @click.prevent="currentView = 'analytics'; selectedBattery = null">
           <span class="material-icons-round">analytics</span>
-          About Model
+          Analytics
         </a>
-        <a href="#" @click.prevent>
-          <span class="material-icons-round">settings</span>
-          Settings
+        <a href="#" :class="{ active: currentView === 'model-info' }" @click.prevent="currentView = 'model-info'; selectedBattery = null">
+          <span class="material-icons-round">psychology</span>
+          About Model
         </a>
       </nav>
       <div class="user-profile">
@@ -38,6 +38,7 @@
           <span>Dashboards</span>
           <template v-if="currentView === 'dashboard'"> / <span class="current">Battery Health Overview</span></template>
           <template v-else-if="currentView === 'fleet'"> / <span class="current">Fleet Triage</span></template>
+          <template v-else-if="currentView === 'analytics'"> / <span class="current">Fleet Analytics</span></template>
           <template v-else-if="currentView === 'model-info'"> / <span class="current">About the Model</span></template>
           <template v-else-if="currentView === 'detail'"> / <span @click="currentView='fleet'; selectedBattery=null" class="breadcrumb-link">Fleet Triage</span> / <span class="current">{{ selectedBattery }}</span></template>
         </div>
@@ -55,6 +56,11 @@
           <!-- Fleet Triage view -->
           <div v-else-if="currentView === 'fleet'" key="fleet" class="view-card">
             <FleetTriage @select-battery="openBattery" />
+          </div>
+
+          <!-- Analytics view -->
+          <div v-else-if="currentView === 'analytics'" key="analytics" class="view-card">
+            <Analytics />
           </div>
 
           <!-- Model Info view -->
@@ -81,6 +87,7 @@ import Dashboard    from './components/Dashboard.vue';
 import FleetTriage  from './components/FleetTriage.vue';
 import BatteryDetail from './components/BatteryDetail.vue';
 import ModelInfo     from './components/ModelInfo.vue';
+import Analytics     from './components/Analytics.vue';
 
 const currentView    = ref('dashboard');
 const selectedBattery = ref(null);
