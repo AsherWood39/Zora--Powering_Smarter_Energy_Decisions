@@ -1,5 +1,7 @@
+dotenv
 flask
 flask-cors
+<<<<<<< HEAD
 gunicorn
 pandas
 numpy
@@ -11,3 +13,12 @@ python-dotenv
 requests
 groq
 fpdf2
+=======
+fpdf2matplotlib==3.10.8
+groq
+numpy 
+pandas
+requests
+scikit-learn 
+xgboost
+>>>>>>> 7980be0 (feat: fix PDF export and implement bespoke floating scrollbar)

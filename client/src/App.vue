@@ -76,19 +76,6 @@
           </div>
         </Transition>
 
-        <!-- Floating Scroll Toggle Button -->
-        <Transition name="fab-fade">
-          <button 
-            v-if="isScrollable && currentView !== 'model-info'"
-            class="fab-scroll-toggle"
-            @click="toggleScroll"
-            :title="isAtBottom ? 'Scroll to Top' : 'Scroll to Bottom'"
-          >
-            <span class="material-icons-round">
-              {{ isAtBottom ? 'keyboard_double_arrow_up' : 'keyboard_double_arrow_down' }}
-            </span>
-          </button>
-        </Transition>
       </div>
     </main>
   </div>
@@ -106,9 +93,6 @@ import api from './api.js';
 const currentView    = ref('dashboard');
 const selectedBattery = ref(null);
 const scrollContainer = ref(null);
-const isAtBottom      = ref(false);
-const isScrollable    = ref(false);
-
 const openBattery = (batteryId) => {
   selectedBattery.value = batteryId;
   currentView.value = 'detail';
@@ -116,44 +100,14 @@ const openBattery = (batteryId) => {
 
 const handleExport = () => {
   // Use the currently analyzed battery ID (default to critical if none selected)
-  window.open(api.report(''), '_blank');
+  const id = selectedBattery.value || '';
+  window.open(api.report(id), '_blank');
 };
 
-const checkScrollability = () => {
-  if (scrollContainer.value) {
-    const { scrollHeight, clientHeight } = scrollContainer.value;
-    isScrollable.value = scrollHeight > clientHeight + 50; // Add small buffer
-  }
-};
-
-const handleScroll = (event) => {
-  const { scrollTop, scrollHeight, clientHeight } = event.target;
-  isAtBottom.value = scrollTop > (scrollHeight - clientHeight) / 2;
-  checkScrollability();
-};
-
-const toggleScroll = () => {
-  if (scrollContainer.value) {
-    const { scrollHeight, clientHeight } = scrollContainer.value;
-    const target = isAtBottom.value ? 0 : scrollHeight - clientHeight;
-    
-    scrollContainer.value.scrollTo({
-      top: target,
-      behavior: 'smooth'
-    });
-  }
-};
-
-// Re-check scrollability when view changes or components mount
-import { watch, onMounted, nextTick } from 'vue';
+// Re-check state when view changes
+import { watch } from 'vue';
 watch(currentView, () => {
-  isAtBottom.value = false;
-  isScrollable.value = false;
-  nextTick(checkScrollability);
-});
-
-onMounted(() => {
-  setTimeout(checkScrollability, 500); // Wait for animations/data
+  selectedBattery.value = null;
 });
 </script>
 
@@ -176,49 +130,34 @@ onMounted(() => {
 .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
-/* Interactive Floating Action Button */
-.fab-scroll-toggle {
-  position: fixed;
-  bottom: 2.5rem;
-  right: 2.5rem;
-  width: 60px;
-  height: 60px;
-  border-radius: 18px; /* Matching card radius better */
-  background: linear-gradient(135deg, var(--accent-success), #059669);
-  color: white;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  box-shadow: 0 10px 30px rgba(16, 185, 129, 0.4);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+/* Floating Bespoke Scrollbar - User Driven Design */
+.content-wrapper::-webkit-scrollbar,
+.sidebar::-webkit-scrollbar {
+  width: 24px;
 }
 
-.fab-scroll-toggle:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 15px 35px rgba(16, 185, 129, 0.6);
-  filter: brightness(1.1);
+.content-wrapper::-webkit-scrollbar-track,
+.sidebar::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.3); /* Subtle track */
+  border-radius: 15px;
 }
 
-.fab-scroll-toggle:active {
-  transform: scale(0.95);
+.content-wrapper::-webkit-scrollbar-thumb,
+.sidebar::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4); /* High visibility slate */
+  border-radius: 15px;
+  border: 8px solid transparent; /* Generous centered padding */
+  background-clip: content-box;
+  transition: all 0.2s ease;
 }
 
-.fab-scroll-toggle span {
-  font-size: 2rem;
-  transition: transform 0.4s ease;
+.content-wrapper::-webkit-scrollbar-thumb:hover,
+.sidebar::-webkit-scrollbar-thumb:hover {
+  background: rgba(16, 185, 129, 0.6); /* Strong teal hover */
+  background-clip: content-box;
 }
 
-/* FAB Animation */
-.fab-fade-enter-active, .fab-fade-leave-active {
-  transition: all 0.3s ease;
+.content-wrapper {
+  overflow-y: overlay;
 }
-
-.fab-fade-enter-from, .fab-fade-leave-to {
-  opacity: 0;
-  transform: scale(0.5) translateY(20px);
-}
-
 </style>
