@@ -1,5 +1,4 @@
-=======
->>>>>>> 7980be0 (feat: fix PDF export and implement bespoke floating scrollbar)
+
 dotenv
 flask
 flask-cors
@@ -7,7 +6,6 @@ fpdf2
 fpdf2matplotlib==3.10.8
 groq
 gunicorn
-<<<<<<< HEAD
 matplotlib
 numpy
 numpy 

@@ -106,9 +106,7 @@ const handleExport = () => {
 
 // Re-check state when view changes
 import { watch } from 'vue';
-watch(currentView, () => {
-  selectedBattery.value = null;
-});
+// Redundant watcher removed to prevent clearing selectedBattery during legitimate deep-dive transitions
 </script>
 
 <style scoped>
