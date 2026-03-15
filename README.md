@@ -53,8 +53,13 @@ Zora--Powering_Smarter_Energy_Decisions/
 │   │   └── results/         ← Saved .pkl bundles, JSON rules, and final_features.csv
 │   └── app.py               ← Flask API entry point
 ├── client/                  ← Vue.js + Vite frontend (In Development)
-├── README.md                
-└── Zora-DOC.md              ← Comprehensive Data Science Curriculum / Study Guide
+├── docs/                    ← Project Documentation
+│   ├── Zora-DOC.md          ← Comprehensive Data Science Curriculum / Study Guide
+│   ├── breakthrough_strategy.md
+│   ├── execution_plan.md
+│   ├── data_planning.md
+│   └── notes.md
+└── README.md                
 ```
 
 ## ⚙️ Running the Inference Pipeline

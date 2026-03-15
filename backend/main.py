@@ -18,6 +18,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from dotenv import load_dotenv
 from ml.data_pipeline import data_pipeline
 from ml.train_rul import train_rul
+from ml.train_soh import train_soh
 
 def main():
     print("Starting Zora Health Intelligence Pipeline...")
@@ -29,13 +30,8 @@ def main():
     # PHASE 2 | Lesson 4 & Lesson 8
     # Merges metadata, extracts physics proxy features (Re, Plateaus), 
     # calculates true labels, and saves 'final_features.csv'
+    # Note: data_pipeline() implicitly triggers train_soh() and train_rul() at its end.
     data_pipeline()
-    
-    # 3. Train the Remaining Useful Life (RUL) Model
-    # PHASE 3.8 | Lesson 6 & Lesson 9 (Group-Aware Meta-Learner)
-    # Note: data_pipeline() implicitly triggers train_soh() at its end.
-    # Here we explicitly trigger the RUL (Cycles-to-EOL) training step next.
-    train_rul()
     
     # 4. Generate Business Logic (Fleet Triage Rules)
     # PHASE 4 | Lesson 11 (State of the Art & Actionable Decisions)

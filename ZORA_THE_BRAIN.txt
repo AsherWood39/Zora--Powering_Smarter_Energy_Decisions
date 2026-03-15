@@ -1,0 +1,63 @@
+========================================================================
+ZORA: THE STRATEGIC BRAIN (Technical Summary for Presentation)
+========================================================================
+
+1. PROJECT AIM & VISION
+------------------------------------------------------------------------
+Zora is a bridge between Battery Science and Operational Excellence. 
+It transforms raw battery data (voltage, temp, current) into clear 
+"Maintenance Directives."
+
+AIM: Move from "Reactive Maintenance" (fixing things when they break) 
+to "Prescriptive Maintenance" (knowing exactly what to do to prevent 
+failure).
+
+2. TECHNICAL STACK (The Architecture)
+------------------------------------------------------------------------
+- FRONTEND: Vue 3 (Logic), Vite (Speed), Chart.js (Visuals).
+- BACKEND: Flask (API Gateway), Pandas/NumPy (Data Guru).
+- AI/ML: 
+  * XGBoost Engine: Predicts health (SoH) and life (RUL).
+  * Llama 3 Expert: Turns numbers into human instructions.
+
+3. TECHNICAL FORMULAS & PHYSICS (The Science)
+------------------------------------------------------------------------
+* FORMULA 1: State of Health (SoH)
+  SoH (%) = (Current Capacity / Nominal Capacity) * 100
+  - Warning Threshold: < 80% (The "Degradation Knee")
+  - Critical Threshold: < 70% (End-of-Life for EVs)
+
+* FORMULA 2: Internal Resistance (Re)
+  Resistance is the primary indicator of physical wear.
+  Power Loss = Current^2 * Resistance
+  - Zora Rule: If Resistance > 0.085 Ohms, trigger "Critical Decay" 
+    directive.
+
+* FORMULA 3: The Simulation Engine (Digital Twin)
+  Adjusted Life = Base Life * (1.0 - Total Penalties)
+  - Thermal Penalty: 24C is optimal.
+  - Cold Penalty: 1.8% loss per degree away from 24C.
+  - Heat Penalty: 1.0% loss per degree away from 24C.
+
+4. KEY INNOVATIONS (The "X-Factor")
+------------------------------------------------------------------------
+* ACTION-ORIENTED AI: 
+  - Title: Direct Command (e.g., "Limit Charge Current to 0.4C")
+  - Description: Scientific Why (e.g., "Resistance has spiked 15%")
+
+* FLEET TRIAGE:
+  Automatically sorts the whole fleet into:
+  - GREEN: Healthy (SoH > 80%)
+  - YELLOW: Warning (70-80%)
+  - RED: Critical (< 70%)
+
+* ENGINEERING EXPORTS:
+  One-click PDF reports including visual trend graphs so technicians 
+  have proof of impending failure points.
+
+5. SUMMARY STATEMENT
+------------------------------------------------------------------------
+"Zora uses physics-informed AI to quantify exactly what is happening 
+inside battery cells, then translates those formulas into actionable 
+maintenance strategies for fleet operators."
+========================================================================
