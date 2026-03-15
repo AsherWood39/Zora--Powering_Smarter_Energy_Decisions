@@ -3,7 +3,7 @@
     <div class="fleet-header">
       <h2>⚡ Fleet Triage</h2>
       <div class="fleet-summary">
-        <span class="badge healthy">🟢 {{ healthyCount }} Healthy</span>
+        <span class="badge healthy">🟢 {{ normalCount }} Normal</span>
         <span class="badge warning">🟡 {{ warningCount }} Warning</span>
         <span class="badge critical">🔴 {{ criticalCount }} Critical</span>
         <span class="badge eol">💀 {{ eolCount }} EOL</span>
@@ -92,9 +92,9 @@ const warningCount  = computed(() => fleet.value.filter(b => {
     const s = (b.status || '').toLowerCase();
     return s === 'warning' || s === 'risk';
 }).length);
-const healthyCount  = computed(() => fleet.value.filter(b => {
+const normalCount  = computed(() => fleet.value.filter(b => {
     const s = (b.status || '').toLowerCase();
-    return s === 'healthy' || s === 'good';
+    return s === 'healthy' || s === 'good' || s === 'normal';
 }).length);
 
 const groupedFleet = computed(() => {
@@ -225,11 +225,12 @@ onMounted(async () => {
   border-color: rgba(99,102,241,0.4);
   transform: translateX(3px);
 }
-.battery-row.status-eol      { border-left: 3px solid #64748b; filter: grayscale(0.5); }
+.battery-row.status-eol      { border-left: 3px solid #64748b; filter: grayscale(0.6); opacity: 0.8; }
 .battery-row.status-critical { border-left: 3px solid #ef4444; }
 .battery-row.status-warning,
 .battery-row.status-risk     { border-left: 3px solid #f59e0b; }
 .battery-row.status-healthy,
+.battery-row.status-normal,
 .battery-row.status-good     { border-left: 3px solid #10b981; }
 
 .status-dot {
@@ -242,6 +243,7 @@ onMounted(async () => {
 .status-dot.warning,
 .status-dot.risk     { background: #f59e0b; box-shadow: 0 0 6px #f59e0b; }
 .status-dot.healthy,
+.status-dot.normal,
 .status-dot.good     { background: #10b981; box-shadow: 0 0 6px #10b981; }
 
 .battery-id { display: flex; flex-direction: column; gap: 0.2rem; }
@@ -254,10 +256,10 @@ onMounted(async () => {
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
-.regime-normal      { background: rgba(16,185,129,0.15); color: #34d399; }
-.regime-warning { background: rgba(245,158,11,0.15); color: #f59e0b; }
+.regime-normal      { background: rgba(16,185,129,0.1); color: #10b981; border: 1px solid rgba(16,185,129,0.2); }
+.regime-warning { background: rgba(245,158,11,0.1); color: #f59e0b; border: 1px solid rgba(245,158,11,0.2); }
 .regime-critical,
-.regime-anomalous   { background: rgba(239,68,68,0.15);  color: #f87171; }
+.regime-anomalous   { background: rgba(239,68,68,0.1);  color: #ef4444; border: 1px solid rgba(239,68,68,0.2); }
 
 .soh-section { display: flex; align-items: center; gap: 0.6rem; }
 .soh-label   { font-size: 0.7rem; color: #64748b; width: 24px; flex-shrink: 0; }
@@ -273,12 +275,13 @@ onMounted(async () => {
   border-radius: 4px;
   transition: width 0.6s ease;
 }
-.soh-bar.eol      { background: #475569; }
-.soh-bar.critical { background: linear-gradient(90deg, #ef4444, #f87171); }
+.soh-bar.eol      { background: #64748b; }
+.soh-bar.critical { background: linear-gradient(90deg, #dc2626, #ef4444); }
 .soh-bar.warning,
-.soh-bar.risk     { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.soh-bar.risk     { background: linear-gradient(90deg, #d97706, #f59e0b); }
 .soh-bar.healthy,
-.soh-bar.good     { background: linear-gradient(90deg, #10b981, #34d399); }
+.soh-bar.normal,
+.soh-bar.good     { background: linear-gradient(90deg, #059669, #10b981); }
 .soh-value { font-size: 0.82rem; font-weight: 700; color: #cbd5e1; width: 42px; text-align: right; }
 
 .rul-section  { text-align: center; }

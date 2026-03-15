@@ -163,6 +163,34 @@ def _get_data():
                 _cached_df = pd.DataFrame()
     return _cached_df
 
+def _sample_battery_cycle(df, bid):
+    """
+    Centralized demo sampling logic to ensure consistency across Triage, Dashboard, and Deep-Dive.
+    Returns the nearest cycle to the demo target or the absolute latest if no target exists.
+    """
+    history = df[df['battery_id'] == bid].sort_values('cycle_number')
+    if history.empty:
+        return None
+        
+    # Standard Demo Simulation Targets (Day 8 - Scientific Precision)
+    target_cycles = {
+        'B0005': 92, 'B0006': 41, 'B0018': 75,   # Room (Normal/Warning/Critical)
+        'B0033': 70, 'B0034': 66,                 # Room (Normal)
+        'B0039': 45, 'B0040': 43,                 # Room (Warning)
+        'B0042': 82, 'B0043': 96, 'B0044': 74,   # Room (Normal)
+        'B0046': 15, 'B0047': 8, 'B0048': 10,    # Cold (Critical - High Urgency)
+        'B0053': -1, 'B0054': -1, 'B0055': -1, 'B0056': -1 # Elevated (EOL - Dead)
+    }
+    
+    target = target_cycles.get(bid, -1)
+    if target == -1:
+        # Use the absolute latest reading (includes EOL batteries)
+        return history.iloc[-1]
+    
+    # Use the closest reading to the target for a "frozen in time" demo state
+    closest_idx = (history['cycle_number'] - target).abs().idxmin()
+    return history.loc[closest_idx]
+
 # ---------------------------
 # Load environment variables from .env file
 load_dotenv()
@@ -188,10 +216,8 @@ def get_dashboard_stats(battery_id="B0005"):
 
     # Sort by cycle to ensure iloc[-1] is actually the latest
     # Sort and filter noise (Cycle < 5 often has initialization spikes)
-    battery_df = df[df['battery_id'] == battery_id].sort_values('cycle_number')
-    battery_df = battery_df[battery_df['cycle_number'] >= 5]
-    
-    if battery_df.empty:
+    latest = _sample_battery_cycle(df, battery_id)
+    if latest is None:
         return {
             "health_score": 87,
             "health_status": "Mock (Data Missing)",
@@ -201,36 +227,37 @@ def get_dashboard_stats(battery_id="B0005"):
             "total_cycles": 420,
             "efficiency": 92,
         }
-    latest = battery_df.iloc[-1]
     
     # Run real prediction
     pred = _predictor.predict(latest.to_dict())
-    # ── STANDARD METRIC: SoH-Rel (Capacity Retention) ──
-    # The absolute SoH_Global can be lower, but soh_rel shows the performance remaining 
-    # relative to the rated capacity of that specific research unit.
-    soh_val = min(100.0, float(latest['capacity_rel'] * 100)) 
+    
+    # ── PRIMARY METRIC: ML-Predicted SoH ──
+    # We use the ML model's prediction as the source of truth for the Health Score
+    soh_val = pred["predictions"].get("soh", {}).get("value_percent", 0)
     rul = pred["predictions"].get("rul", {}).get("value_cycles")
     
-    # ── STATUS CLASSIFICATION LOGIC (Unified Core) ──
-    if rul == 0 or soh_val < 60:
+    # ── STATUS CLASSIFICATION LOGIC (RESTORED 4-STATE) ──
+    # Unifying for Gray (EOL) vs Red (Critical) vs Yellow (Warning) vs Green (Healthy)
+    # We use int(rul) < 1 to ensure display 0 always maps to EOL
+    if (rul is not None and int(rul) < 1) or soh_val < 50:
         status = "eol"
-    elif soh_val < 70:
+    elif soh_val < 72:
         status = "critical"
     elif soh_val < 80:
         status = "warning"
     else:
-        status = "healthy"
+        status = "normal"
 
     return {
         "battery_id": battery_id,
         "health_score": round(soh_val, 1),
-        "health_status": status.capitalize(),
-        "remaining_useful_life": f"{round(rul / 14, 1)} Months" if (rul is not None and rul > 0) else ("End of Life / Replace" if rul == 0 else "Calculating..."),
+        "health_status": "DECOMMISSIONED" if status == "eol" else status.upper(),
+        "remaining_useful_life": f"{int(rul)} Cycles" if (rul is not None and int(rul) > 0) else ("0 Cycles" if status == "eol" else "Calculating..."),
         "current_capacity": float(round(latest['Capacity'], 2)),
         "original_capacity": float(round(latest['meta_rated_cap'], 2)),
         "total_cycles": int(latest['cycle_number']),
-        "efficiency": int(soh_val),
-        "temperature": 24.0, # Ambient lab temp
+        "efficiency": int(latest['capacity_rel'] * 100),
+        "temperature": 24.0, 
     }
 
 
@@ -580,31 +607,13 @@ def get_fleet_triage():
         if _predictor.rul_bundle is None or _predictor.triage_rules is None:
             _predictor.__init__()
 
-        # ── DEMO SAMPLING LOGIC (Day 8 Research Grade - Precision Alignment) ──
-        # We sample specific batteries at historical cycles that match the user's 
-        # requested dashboard snapshot to ensure the "Fleet Triage" matches reality.
-        history = df[df['battery_id'] == bid].sort_values('cycle_number')
-        
-        target_cycles = {
-            'B0005': 92, 'B0006': 41, 'B0018': 33,   # Room (Healthy/Warning)
-            'B0033': 70, 'B0034': 66,                 # Room (Healthy)
-            'B0039': 45, 'B0040': 42,                 # Room (Warning)
-            'B0042': 82, 'B0043': 96, 'B0044': 74,   # Room (Healthy)
-            'B0046': -1, 'B0047': -1, 'B0048': -1,   # Cold (Critical - Latest)
-            'B0053': -1, 'B0054': -1, 'B0055': -1, 'B0056': -1 # Elevated (Critical - Latest)
-        }
-        
-        target = target_cycles.get(bid, -1)
-        if target == -1:
-            latest = history.iloc[-1]
-        else:
-            # Find the closest cycle in history
-            closest_idx = (history['cycle_number'] - target).abs().idxmin()
-            latest = history.loc[closest_idx]
+        # ── UNIFIED SAMPLING LOGIC ──
+        latest = _sample_battery_cycle(df, bid)
+        if latest is None: continue
         
         # Predict
         pred = _predictor.predict(latest.to_dict())
-        soh_val = min(100.0, float(latest['capacity_rel'] * 100))
+        soh_val = pred["predictions"].get("soh", {}).get("value_percent", 0)
         rul = pred["predictions"].get("rul", {}).get("value_cycles")
         
         # Determine group info
@@ -614,14 +623,19 @@ def get_fleet_triage():
         if temp > 30: group_name = "Elevated Temp (43°C)"
         elif temp < 10: group_name = "Cold Temp (4°C)"
 
-        # Consistent status logic (Unified Core)
-        status = "healthy"
-        if (rul is not None and rul == 0) or soh_val < 60:
+        # Consistent status logic (Restored 4-State)
+        status = "normal"
+        if (rul is not None and int(rul) < 1) or soh_val < 50:
             status = "eol"
-        elif soh_val < 70:
+        elif soh_val < 72:
             status = "critical"
         elif soh_val < 80:
             status = "warning"
+
+        # SYNC REGIME LABEL TO STATUS COLOR (Eliminate Confusion)
+        regime_label = status.upper()
+        if status == "eol": regime_label = "DECOMMISSIONED"
+        elif status == "normal": regime_label = "NORMAL"
 
         fleet.append({
             "battery_id": bid,
@@ -631,7 +645,7 @@ def get_fleet_triage():
             "rul_months": round(float(rul) / 14, 1) if rul and rul > 0 else 0,
             "total_cycles": int(latest['cycle_number']),
             "temperature": temp,
-            "regime": pred["predictions"].get("degradation_regime", "NORMAL").replace("🟢", "").replace("🟡", "").replace("🔴", "").strip().upper(),
+            "regime": regime_label,
             "group_id": gid,
             "group_name": group_name
         })
@@ -713,16 +727,15 @@ def get_battery_health_details(battery_id):
     Returns health details for a specific battery using REAL historical data.
     """
     df = _get_data()
-    if df.empty or battery_id not in df['battery_id'].unique():
+    latest = _sample_battery_cycle(df, battery_id)
+    if latest is None:
         return None
-
-    battery_df = df[df['battery_id'] == battery_id].sort_values('cycle_number')
-    latest = battery_df.iloc[-1]
     
     # Predict current state
     pred = _predictor.predict(latest.to_dict())
-    # Consistent Metric (Relatively capacity retention)
-    soh = min(100.0, float(latest['capacity_rel'] * 100))
+    
+    # Consistent Metric (ML Predicted SoH)
+    soh = pred["predictions"].get("soh", {}).get("value_percent", 0)
     rul = pred["predictions"].get("rul", {}).get("value_cycles", 0)
     
     chart_payload = get_historical_data(battery_id)
@@ -736,15 +749,20 @@ def get_battery_health_details(battery_id):
         else: regime_history.append("Critical")
 
     # Consistent status logic
-    status = "healthy"
-    if rul == 0 or soh < 60:
+    status = "normal"
+    if (rul is not None and int(rul) < 1) or soh < 50:
         status = "eol"
-    elif soh < 70:
+    elif soh < 72:
         status = "critical"
     elif soh < 80:
         status = "warning"
     
-    current_regime = "NORMAL" if soh >= 85 else ("WARNING" if soh >= 70 else "CRITICAL")
+    # SYNC REGIME LABEL TO STATUS COLOR (Eliminate Confusion)
+    regime_label = status.upper()
+    if status == "eol": regime_label = "DECOMMISSIONED"
+    elif status == "normal": regime_label = "NORMAL"
+    
+    current_regime = regime_label
 
     # Generate personalized recommendations
     recos = get_recommendations({

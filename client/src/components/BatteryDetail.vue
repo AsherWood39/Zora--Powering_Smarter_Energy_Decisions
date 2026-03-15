@@ -154,6 +154,7 @@
           Simulation disabled for decommissioned (EOL) units.
         </div>
 
+
         <div class="temp-result" v-if="simResult">
           <div class="temp-result-row">
             <div class="result-box">
@@ -537,6 +538,7 @@ const renderChart = () => {
 .status-pill.warning,
 .status-pill.risk     { background: rgba(245,158,11,0.2); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); }
 .status-pill.healthy,
+.status-pill.normal,
 .status-pill.good     { background: rgba(16,185,129,0.2); color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
 
 /* KPI Strip */
@@ -558,6 +560,7 @@ const renderChart = () => {
 .kpi-value.warning,
 .kpi-value.risk     { color: #fbbf24; }
 .kpi-value.healthy,
+.kpi-value.normal,
 .kpi-value.good     { color: #34d399; }
 .kpi-unit    { font-size: 0.75rem; font-weight: 500; color: #64748b; }
 .kpi-sub     { font-size: 0.7rem; color: #64748b; margin-top: 0.1rem; }
