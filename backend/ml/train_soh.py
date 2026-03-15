@@ -9,7 +9,6 @@ Logic: We don't force one model to learn everything. Each experimental battery g
        gets its own baseline degradation curve (Polynomial fit). Then, the XGBoost 
        model acts as a "Meta-Learner", predicting only the residual errors.
 """
-
 import pandas as pd
 import numpy as np
 import pickle
@@ -17,6 +16,7 @@ import re
 import matplotlib.pyplot as plt
 from xgboost import XGBRegressor
 from sklearn.metrics import r2_score, mean_absolute_error
+from sklearn.ensemble import IsolationForest
 import os
 
 # Use absolute paths
@@ -40,7 +40,8 @@ def train_soh():
         'rct_roll_std', 'voltage_drop_roll_mean',
         'early_cap_mean', 'early_rct_mean', 'thermal_delta',
         'charge_time', 'CC_duration', 'CV_duration', 'discharge_energy',
-        'cap_slope_10', 'rct_growth_10'
+        'cap_slope_10', 'rct_growth_10',
+        'cap_slope_5', 'cap_trend_5'
     ]
     
     # Metadata features integration
@@ -63,7 +64,6 @@ def train_soh():
     # --- ANOMALY DETECTION (Data Cleaning) ---
     # Zora-DOC Lesson 10: AI cannot learn from physically impossible data.
     # We use statistical rules and ML to remove corrupted sensor cycles.
-    from sklearn.ensemble import IsolationForest
     print("\n--- MEASUREMENT NOISE FILTERING ---")
     
     # 1. Physics Rule: Remove impossible capacity jumps (>0.05 Ah)
@@ -171,11 +171,18 @@ def train_soh():
                     'variance': var,
                     'cycles': len(test_df)
                 })
-                print(f"    -> {held_out:8s}: R2: {r_sq:7.4f}  MAE: {err_mae:5.2f}%")
+                
+                # Trend comparison for verbosity
+                act_start, act_end = test_df[TARGET_ACTUAL].iloc[0], test_df[TARGET_ACTUAL].iloc[-1]
+                pre_start, pre_end = y_pred[0], y_pred[-1]
+                
+                print(f"    -> {held_out:8s}: R2: {r_sq:7.4f}  MAE: {err_mae:5.2f}% | Actual: {act_start:5.1f}->{act_end:5.1f} vs Pred: {pre_start:5.1f}->{pre_end:5.1f}")
 
     # 3. SUMMARY
+    validation_std = 0.0
     if lobo_results:
         res_df = pd.DataFrame(lobo_results)
+        validation_std = res_df['MAE'].std() if len(res_df) > 1 else 0.0
         
         # Calculate Weighted Metrics
         total_cycles = res_df['cycles'].sum()
@@ -189,13 +196,13 @@ def train_soh():
         print(f"STABILIZED PHYSICS-AWARE RESULTS")
         print(f"Global Mean MAE   : {res_df['MAE'].mean():.2f}%")
         print(f"Cycle-Weighted MAE: {weighted_mae:.2f}%")
-        print(f"Cycle-Weighted R² : {weighted_r2:.4f}")
+        print(f"Cycle-Weighted R^2 : {weighted_r2:.4f}")
         
         print("\n--- [SOTA COMPARISON] ---")
         for b in ['B0005', 'B0043', 'B0047']:
             if b in res_df['battery'].values:
                 b_res = res_df[res_df['battery'] == b].iloc[0]
-                print(f"  {b} -> R²: {b_res['R2']:.4f}  MAE: {b_res['MAE']:.2f}% (Beats SOTA)")
+                print(f"  {b} -> R^2: {b_res['R2']:.4f}  MAE: {b_res['MAE']:.2f}% (Beats SOTA)")
         print(f"{'-'*60}")
 
     # 4. FINAL SAVING (META-LEARNER)
@@ -219,7 +226,8 @@ def train_soh():
         'ml_model': final_model,
         'global_baseline': global_poly,
         'group_baselines': group_baselines,
-        'features': FEATURE_COLS
+        'features': FEATURE_COLS,
+        'model_std': float(validation_std)
     }
     
     model_path = os.path.join(BASE_DIR, 'ml/results/soh_model_bundle.pkl')

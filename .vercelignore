@@ -1,8 +1,0 @@
-# Exclude large datasets and documentation from Vercel deployment
-backend/dataset/
-client/node_modules/
-docs/
-.git/
-.env
-*.md
-**/__pycache__

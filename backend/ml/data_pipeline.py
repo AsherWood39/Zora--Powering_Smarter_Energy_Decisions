@@ -304,10 +304,17 @@ def data_pipeline():
     # --- DEGRADATION TRAJECTORY FEATURES ---
     # Zora Research Grade Step 2: Modeling the aging speed
     print("Computing trajectory slopes (Capacity/Resistance)...")
-    discharge['cap_slope_10'] = discharge.groupby('battery_id')['capacity_rel'] \
+    discharge['cap_slope_10'] = discharge.groupby('battery_id', group_keys=False)['capacity_rel'] \
         .transform(lambda x: x.rolling(10, min_periods=5).apply(lambda y: np.polyfit(range(len(y)), y, 1)[0])).fillna(0)
     
-    discharge['rct_growth_10'] = discharge.groupby('battery_id')['Rct_rel'] \
+    # NEW: Short-term 5-cycle trend for accelerated degradation detection
+    discharge['cap_slope_5'] = discharge.groupby('battery_id', group_keys=False)['capacity_rel'] \
+        .transform(lambda x: x.rolling(5, min_periods=3).apply(lambda y: np.polyfit(range(len(y)), y, 1)[0])).fillna(0)
+    
+    discharge['cap_trend_5'] = discharge.groupby('battery_id', group_keys=False)['capacity_rel'] \
+        .transform(lambda x: x.diff(5)).fillna(0)
+
+    discharge['rct_growth_10'] = discharge.groupby('battery_id', group_keys=False)['Rct_rel'] \
         .transform(lambda x: x.rolling(10, min_periods=5).apply(lambda y: np.polyfit(range(len(y)), y, 1)[0])).fillna(0)
 
     # --- AFTER TS MERGE: ROLLING FEATURES & THERMAL DELTA ---

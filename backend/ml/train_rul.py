@@ -15,7 +15,9 @@ import numpy as np
 import pickle
 import matplotlib.pyplot as plt
 from xgboost import XGBRegressor
-from sklearn.metrics import r2_score, mean_absolute_error
+from sklearn.metrics import r2_score, mean_absolute_error        
+from sklearn.ensemble import IsolationForest
+import re
 import os
 
 # Use absolute paths
@@ -35,13 +37,12 @@ def train_rul():
         'ts_ohmic_drop', 'ts_time_to_35v', 'ts_dvdt_mid',
         'ts_ica_peak_height', 'ts_ica_peak_pos', 'ts_ica_area',
         'rct_roll_std', 'voltage_drop_roll_mean',
-        'early_cap_mean', 'early_rct_mean',
-        'meta_current_num', 'meta_cutoff_num', 'meta_rated_cap', 'thermal_delta',
+        'early_cap_mean', 'early_rct_mean', 'thermal_delta',
         'charge_time', 'CC_duration', 'CV_duration', 'discharge_energy',
-        'cap_slope_10', 'rct_growth_10'
+        'cap_slope_10', 'rct_growth_10',
+        'cap_slope_5', 'cap_trend_5'
     ]
 
-    import re
     def parse_numeric(val):
         if pd.isna(val): return 0
         if isinstance(val, (int, float)): return float(val)
@@ -50,8 +51,12 @@ def train_rul():
 
     if 'meta_current' in df.columns:
         df['meta_current_num'] = df['meta_current'].apply(parse_numeric)
+        FEATURE_COLS.append('meta_current_num')
     if 'meta_cutoff' in df.columns:
         df['meta_cutoff_num'] = df['meta_cutoff'].apply(parse_numeric)
+        FEATURE_COLS.append('meta_cutoff_num')
+    if 'meta_rated_cap' in df.columns:
+        FEATURE_COLS.append('meta_rated_cap')
 
     # Ensure numeric types and drop NaNs
     for col in FEATURE_COLS + [TARGET_ACTUAL]:
@@ -77,8 +82,7 @@ def train_rul():
     if bad_batteries:
         print(f"[CLEANING] Excluding known corrupted NASA batteries: {bad_batteries}")
         df = df[~df['battery_id'].isin(bad_batteries)].copy()
-        
-    from sklearn.ensemble import IsolationForest
+
     print("[CLEANING] Running Isolation Forest to remove multivariate anomalous cycles...")
     iso = IsolationForest(contamination=0.05, random_state=42)
     df['anomaly'] = iso.fit_predict(df[FEATURE_COLS])
@@ -166,11 +170,18 @@ def train_rul():
                     'variance': var,
                     'cycles': len(test_df)
                 })
-                print(f"    -> {held_out:8s}: R2: {r_sq:7.4f}  MAE: {err_mae:5.2f} cycles")
+                
+                # Trend comparison for verbosity
+                act_start, act_end = test_df[TARGET_ACTUAL].iloc[0], test_df[TARGET_ACTUAL].iloc[-1]
+                pre_start, pre_end = y_pred[0], y_pred[-1]
+                
+                print(f"    -> {held_out:8s}: R2: {r_sq:7.4f}  MAE: {err_mae:5.2f} cycles | Actual: {act_start:3.0f}->{act_end:3.0f} vs Pred: {pre_start:3.0f}->{pre_end:3.0f}")
 
     # 3. SUMMARY
+    validation_std = 0.0
     if lobo_results:
         res_df = pd.DataFrame(lobo_results)
+        validation_std = res_df['MAE'].std() if len(res_df) > 1 else 0.0
         
         # Calculate Weighted Metrics
         total_cycles = res_df['cycles'].sum()
@@ -178,19 +189,19 @@ def train_rul():
         
         # Using a fixed variance threshold for R2 benchmarking
         benchmark_df = res_df[res_df['variance'] > 1.0]
-        weighted_r2 = (benchmark_df['R2'] * benchmark_df['cycles']).sum() / benchmark_df['cycles'].sum()
-        
-        print(f"\n{'-'*60}")
-        print(f"RESEARCH-GRADE RUL RESULTS")
-        print(f"Global Mean MAE   : {res_df['MAE'].mean():.2f} cycles")
         print(f"Cycle-Weighted MAE: {weighted_mae:.2f} cycles")
-        print(f"Cycle-Weighted R² : {weighted_r2:.4f}")
+        
+        if not benchmark_df.empty and benchmark_df['cycles'].sum() > 0:
+            weighted_r2 = (benchmark_df['R2'] * benchmark_df['cycles']).sum() / benchmark_df['cycles'].sum()
+            print(f"Cycle-Weighted R^2 : {weighted_r2:.4f}")
+        else:
+            print("Cycle-Weighted R^2 : N/A (Insufficient variance in test set)")
         
         print("\n--- [SOTA COMPARISON] ---")
         for b in ['B0005', 'B0043', 'B0047']:
             if b in res_df['battery'].values:
                 b_res = res_df[res_df['battery'] == b].iloc[0]
-                print(f"  {b} -> R²: {b_res['R2']:.4f}  MAE: {b_res['MAE']:.2f} cycles (Beats SOTA)")
+                print(f"  {b} -> R^2: {b_res['R2']:.4f}  MAE: {b_res['MAE']:.2f} cycles (Beats SOTA)")
         print(f"{'-'*60}")
 
     # 4. FINAL SAVING (META-LEARNER)
@@ -212,7 +223,8 @@ def train_rul():
         'ml_model': final_model,
         'global_baseline': global_poly_rul,
         'group_baselines': group_baselines,
-        'features': FEATURE_COLS
+        'features': FEATURE_COLS,
+        'model_std': float(validation_std)
     }
     
     model_path = os.path.join(BASE_DIR, 'ml/results/rul_model_bundle.pkl')
@@ -223,7 +235,7 @@ def train_rul():
     # Plot
     feat_imp = pd.Series(final_model.feature_importances_, index=FEATURE_COLS)
     plt.figure(figsize=(10, 8))
-    feat_imp.sort_values().plot(kind='barh', color='teal', title='Zora Research-Grade RUL Model — Importance')
+    feat_imp.sort_values().plot(kind='barh', color='teal', title='Zora Research-Grade RUL Model - Importance')
     plt.xlabel('Importance Score')
     plt.tight_layout()
     plt.savefig(os.path.join(BASE_DIR, 'ml/results/rul_feature_importance.png'), dpi=150)
