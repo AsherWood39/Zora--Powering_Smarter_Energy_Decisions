@@ -1,11 +1,9 @@
 flask
 flask-cors
 pandas
-numpy
-matplotlib 
+numpy 
 scikit-learn 
 xgboost
-tqdm
 dotenv
 requests
 groq

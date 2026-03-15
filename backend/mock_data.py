@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from groq import Groq
 import pickle
-import matplotlib.pyplot as plt
 from fpdf import FPDF
 
 # --- REAL ML INTEGRATION ---
