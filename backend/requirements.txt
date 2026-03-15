@@ -9,3 +9,4 @@ tqdm
 dotenv
 requests
 groq
+fpdf2

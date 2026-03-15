@@ -35,10 +35,16 @@
       </div>
     </div>
 
-    <!-- Main Chart -->
+    <!-- Main Chart & Analysis -->
     <div class="card chart-card">
       <div class="card-header">
-        <h2>Degradation Forecast</h2>
+        <div class="header-main">
+          <h2>Degradation Forecast</h2>
+          <p class="analysis-description">
+            <span class="material-icons-round">analytics</span>
+            Performing deep-cycle analysis on <strong>Battery Unit {{ stats.battery_id }}</strong>
+          </p>
+        </div>
         <div class="legend">
           <span class="dot actual"></span> Actual
           <span class="dot predicted"></span> Predicted
@@ -49,10 +55,17 @@
       </div>
     </div>
 
-    <!-- Recommendations -->
+    <!-- Recommendations (Now Stacked Below) -->
     <div class="card reco-card">
       <div class="card-header">
-        <h2>Smart Recommendations</h2>
+        <div class="header-main">
+          <h2>Smart Maintenance Directives</h2>
+          <p class="analysis-description">AI-generated prioritized actions for unit {{ stats.battery_id }}</p>
+        </div>
+        <div class="strategy-badge">
+           <span class="material-icons-round">psychology</span>
+           Expert Intelligence
+        </div>
       </div>
       <div class="reco-list">
         <div 
@@ -70,7 +83,6 @@
             <h4>{{ reco.title }}</h4>
             <p>{{ reco.description }}</p>
           </div>
-          <button class="action-btn">Action</button>
         </div>
       </div>
     </div>
@@ -97,7 +109,7 @@ const getIcon = (severity) => {
 
 const renderChart = async () => {
   try {
-    const response = await axios.get('http://127.0.0.1:5000/api/data');
+    const response = await axios.get('/api/data');
     const data = response.data;
     
     const ctx = document.getElementById('degradationChart').getContext('2d');
@@ -209,16 +221,73 @@ const renderChart = async () => {
   }
 };
 
+const fetchRecommendations = async () => {
+    try {
+        const response = await axios.get('/api/dashboard');
+        recommendations.value = response.data.recommendations;
+        stats.value = response.data.stats;
+    } catch (err) {
+        console.error("Failed to fetch dashboard data:", err);
+    }
+};
+
 onMounted(async () => {
   try {
-    const response = await axios.get('http://127.0.0.1:5000/api/dashboard');
-    stats.value = response.data.stats;
-    recommendations.value = response.data.recommendations;
+    // 1. Get dashboard data
+    await fetchRecommendations();
     
-    // Wait for DOM update then render chart
+    // 2. Wait for DOM update then render chart
     setTimeout(renderChart, 100); 
   } catch (err) {
-    console.error("Failed to fetch dashboard data:", err);
+    console.error("Initialization error:", err);
   }
 });
 </script>
+
+<style scoped>
+.reco-content p {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.chart-card, .reco-card {
+  grid-column: span 3;
+}
+
+.header-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.analysis-description {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.analysis-description strong {
+  color: #818cf8;
+}
+
+.analysis-description .material-icons-round {
+  font-size: 1.1rem;
+  color: #818cf8;
+}
+
+.strategy-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    font-weight: 800;
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.1);
+    padding: 0.3rem 0.6rem;
+    border-radius: 20px;
+}
+</style>

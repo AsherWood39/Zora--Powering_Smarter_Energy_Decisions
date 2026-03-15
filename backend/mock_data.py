@@ -6,10 +6,16 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from groq import Groq
 import pickle
+from fpdf import FPDF
+import io
+import matplotlib
+matplotlib.use('Agg') # Use non-interactive backend
+import matplotlib.pyplot as plt
 
 # --- REAL ML INTEGRATION ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FEATS_PATH = os.path.join(BASE_DIR, "ml/results/final_features.csv")
+
 TRIAGE_RULES_PATH = os.path.join(BASE_DIR, "ml/results/fleet_triage_rules.json")
 SOH_MODEL_PATH = os.path.join(BASE_DIR, "ml/results/soh_model_bundle.pkl")
 RUL_MODEL_PATH = os.path.join(BASE_DIR, "ml/results/rul_model_bundle.pkl")
@@ -156,14 +162,13 @@ def _get_data():
     return _cached_df
 
 # ---------------------------
-
 # Load environment variables from .env file
 load_dotenv()
 
 # Initialize Groq client
 _groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
-def get_battery_stats(battery_id="B0005"):
+def get_dashboard_stats(battery_id="B0005"):
     """
     Returns current battery status and KPI metrics using real ML predictions.
     """
@@ -205,13 +210,156 @@ def get_battery_stats(battery_id="B0005"):
         "battery_id": battery_id,
         "health_score": float(soh),
         "health_status": "Critical" if soh < 75 else ("Warning" if soh < 86 else "Good"),
-        "remaining_useful_life": f"{round(rul / 14, 1)} Months" if rul else "Calculating...",
+        "remaining_useful_life": f"{round(rul / 14, 1)} Months" if (rul is not None and rul > 0) else ("End of Life / Replace" if rul == 0 else "Calculating..."),
         "current_capacity": float(round(latest['Capacity'], 2)),
         "original_capacity": float(round(latest['meta_rated_cap'], 2)),
         "total_cycles": int(latest['cycle_number']),
         "efficiency": int(latest['capacity_rel'] * 100),
         "temperature": 24.0, # Ambient lab temp
     }
+
+
+def generate_pdf_report(battery_id):
+    """
+    Generates a professional engineering PDF report for a battery unit.
+    """
+    stats = get_dashboard_stats(battery_id)
+    recos = get_recommendations(stats)
+    chart_data = get_historical_data(battery_id)
+    
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Header
+    pdf.set_fill_color(30, 41, 59) # Dark slate background for header
+    pdf.rect(0, 0, 210, 40, 'F')
+    
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font('Arial', 'B', 24)
+    pdf.set_y(10)
+    pdf.cell(0, 15, 'ZORA DIAGNOSTIC REPORT', 0, 1, 'C')
+    
+    pdf.set_font('Arial', '', 10)
+    pdf.cell(0, 5, f'Generated on: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}', 0, 1, 'C')
+    
+    # Body
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_y(50)
+    
+    # Asset Info Section
+    pdf.set_font('Arial', 'B', 16)
+    pdf.cell(0, 10, f'Subject Asset: Battery Unit {battery_id}', 0, 1, 'L')
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(5)
+    
+    # Diagnostic Metrics Grid
+    pdf.set_font('Arial', 'B', 12)
+    pdf.cell(95, 10, 'Health Performance Metrics', 0, 0)
+    pdf.cell(95, 10, 'Usage & Operational State', 0, 1)
+    
+    pdf.set_font('Arial', '', 11)
+    
+    # Row 1
+    pdf.cell(47.5, 8, 'State of Health (SoH):', 0, 0)
+    pdf.set_font('Arial', 'B', 11)
+    pdf.cell(47.5, 8, f'{stats["health_score"]}%', 0, 0)
+    pdf.set_font('Arial', '', 11)
+    pdf.cell(47.5, 8, 'Total Cycle Exposure:', 0, 0)
+    pdf.set_font('Arial', 'B', 11)
+    pdf.cell(47.5, 8, f'{stats["total_cycles"]} cycles', 0, 1)
+    
+    # Row 2
+    pdf.set_font('Arial', '', 11)
+    pdf.cell(47.5, 8, 'Remaining Useful Life:', 0, 0)
+    pdf.set_font('Arial', 'B', 11)
+    pdf.cell(47.5, 8, f'{stats["remaining_useful_life"]}', 0, 0)
+    pdf.set_font('Arial', '', 11)
+    pdf.cell(47.5, 8, 'Diagnostic Status:', 0, 0)
+    pdf.set_font('Arial', 'B', 11)
+    pdf.cell(47.5, 8, f'{stats["health_status"]}', 0, 1)
+    
+    # Row 3
+    pdf.set_font('Arial', '', 11)
+    pdf.cell(47.5, 8, 'Energy Efficiency:', 0, 0)
+    pdf.set_font('Arial', 'B', 11)
+    pdf.cell(47.5, 8, f'{stats["efficiency"]}%', 0, 0)
+    pdf.set_font('Arial', '', 11)
+    pdf.cell(47.5, 8, 'Avg. Temperature:', 0, 0)
+    pdf.set_font('Arial', 'B', 11)
+    pdf.cell(47.5, 8, f'{stats["temperature"]} C', 0, 1)
+    
+    pdf.ln(10)
+
+    # Degradation Curve Visual
+    pdf.set_font('Arial', 'B', 14)
+    pdf.cell(0, 10, ' Health Degradation Trend (Actual vs Predicted)', 0, 1, 'L')
+    
+    plt.figure(figsize=(10, 4), dpi=100)
+    plt.style.use('dark_background')
+    
+    actual = [x for x in chart_data['datasets'][0]['data']]
+    pred = [x for x in chart_data['datasets'][1]['data']]
+    labels = chart_data['labels']
+    x_indices = range(len(labels))
+    
+    plt.plot(x_indices, actual, color='#10b981', linewidth=2.5, label='Historical SoH (%)')
+    plt.plot(x_indices, pred, color='#f59e0b', linestyle='--', linewidth=2.5, label='Predicted Trend')
+    
+    # Styling
+    plt.title(f'Diagnostic Timeline: Unit {battery_id}', color='white', pad=15, fontsize=12)
+    plt.ylabel('SoH %', color='#94a3b8')
+    plt.grid(True, alpha=0.1)
+    plt.legend(frameon=False, loc='lower left', fontsize=9)
+    
+    # Save to buffer
+    img_buf = io.BytesIO()
+    plt.savefig(img_buf, format='png', bbox_inches='tight', transparent=True)
+    img_buf.seek(0)
+    
+    # Add to PDF
+    pdf.image(img_buf, x=10, w=190)
+    plt.close() # Memory cleanup
+    
+    pdf.ln(10)
+    
+    # AI Recommendations Section
+    pdf.set_font('Arial', 'B', 16)
+    pdf.set_fill_color(241, 245, 249) # Light gray background for section header
+    pdf.cell(0, 12, ' SMART MAINTENANCE DIRECTIVES', 0, 1, 'L', fill=True)
+    pdf.ln(5)
+    
+    for reco in recos:
+        # Priority Badge
+        severity_color = (239, 68, 68) if reco['severity'] == 'high' else ((245, 158, 11) if reco['severity'] == 'medium' else (16, 185, 129))
+        pdf.set_fill_color(*severity_color)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font('Arial', 'B', 9)
+        pdf.cell(20, 6, reco['severity'].upper(), 0, 0, 'C', fill=True)
+        
+        # Directive Title
+        pdf.set_text_color(30, 41, 59)
+        pdf.set_font('Arial', 'B', 12)
+        # Sanitize text to remove unsupported symbols like Ω
+        safe_title = reco["title"].replace("Ω", "Ohm").replace("—", "-")
+        pdf.cell(0, 6, f'  {safe_title}', 0, 1)
+        
+        # Directive Description
+        pdf.ln(2)
+        pdf.set_font('Arial', '', 10)
+        pdf.set_text_color(71, 85, 105)
+        safe_desc = reco['description'].replace("Ω", "Ohm").replace("—", "-")
+        pdf.multi_cell(0, 5, safe_desc)
+        pdf.ln(8)
+
+    # Footer Disclaimer
+    pdf.set_y(-30)
+    pdf.set_font('Arial', 'I', 8)
+    pdf.set_text_color(148, 163, 184)
+    pdf.multi_cell(0, 4, 'UNAUTHORIZED DISTRIBUTION PROHIBITED. This diagnostic report is generated based on hybrid physics-ML degradation models. Maintenance actions should be verified by a certified battery logistics engineer.', align='C')
+    
+    # Return as bytes
+    # pdf.output() returns bytearray in newer fpdf2, we convert to bytes for Flask
+    return bytes(pdf.output())
 
 
 def get_recommendations(battery_data=None):
@@ -236,6 +384,8 @@ def get_recommendations(battery_data=None):
         list: A list of 3 recommendation dicts with keys: id, title, description, severity
     """
 
+    # Use a robust engineering-first default strategy
+
     # --- Real-aware defaults if no data is provided ---
     if battery_data is None:
         df = _get_data()
@@ -249,6 +399,7 @@ def get_recommendations(battery_data=None):
                 "soh": round(pred["predictions"].get("soh", {}).get("value_percent", 87), 1),
                 "rul": int(pred["predictions"].get("rul", {}).get("value_cycles", 45)),
                 "regime": pred["predictions"].get("degradation_regime", "Normal 🟢"),
+                "re": round(float(latest.get('Re', 0)), 4),
                 "temperature": 24.0,
                 "total_cycles": int(latest['cycle_number']),
             }
@@ -258,50 +409,43 @@ def get_recommendations(battery_data=None):
                 "soh": 87.0,
                 "rul": 45,
                 "regime": "Normal",
+                "re": 0.075,
                 "temperature": 24.0,
                 "total_cycles": 420,
             }
 
-    # Build a clear prompt with the battery's actual condition
-    prompt = f"""You are an expert battery health analyst for an EV fleet management system.
 
-A battery named {battery_data.get('battery_id', 'Unknown')} has the following metrics:
-- State of Health (SoH): {battery_data.get('soh', 'N/A')}%
-- Remaining Useful Life (RUL): {battery_data.get('rul', 'N/A')} cycles
-- Operating Regime: {battery_data.get('regime', 'N/A')} (Normal / Warning / Critical)
-- Ambient Temperature: {battery_data.get('temperature', 'N/A')}°C
-- Total Cycles Completed: {battery_data.get('total_cycles', 'N/A')}
+    # Build a high-fidelity engineering prompt for fleet operators
+    prompt = f"""
+    You are ZORA, the Advanced Diagnostic Intelligence for EV Fleet Operations.
+    Subject Asset: Battery Unit {battery_data.get('battery_id')}
+    
+    Technical State Profile:
+    - Current SoH: {battery_data.get('soh')}%
+    - Calculated RUL: {battery_data.get('rul')} charge/discharge cycles
+    - Impedance Measurement (Re): {battery_data.get('re')} Ω
+    - Active Degradation Regime: {battery_data.get('regime')}
+    - Cycle Exposure: {battery_data.get('total_cycles')} cycles
+    
+    CRITICAL TASK: Provide 3 specific, engineering-grade "Maintenance Directives" for this unit.
+    USER PERSONA: Fleet Maintenance Lead / Battery Logistics Engineer.
+    
+    REQUIREMENTS:
+    1. PROHIBITED: Do not use generic titles like "Replace Battery" or "Check Temperature".
+    2. MANDATORY: Use specific technical terms (e.g. SEI Layer Stabilization, BMS Voltage Cutoff Adjustment, Thermal Ramp Rate Limitation).
+    3. PERSONALIZATION: Each description must explicitly mention why Unit {battery_data.get('battery_id')}'s specific metrics (SoH, Re, or RUL) justify the action.
+    
+    NASA DATASET DIAGNOSTICS: 
+    - Resistance (Re) > 0.085Ω indicates significant electrolyte decomposition or SEI growth.
+    - SoH < 80% marks the "knee" point where capacity loss becomes non-linear.
+    
+    Respond STRICTLY with a JSON list of 3 objects: {{"id": int, "title": "Directive Name", "description": "Technical justification using Unit {battery_data.get('battery_id')}'s data point.", "severity": "high/medium/low"}}.
+    """
 
-Based on this data, provide exactly 3 specific, actionable maintenance recommendations.
-
-Respond ONLY with a valid JSON array in this exact format (no extra text, no markdown):
-[
-  {{
-    "id": 1,
-    "title": "Short title here",
-    "description": "One or two sentence explanation with specific advice.",
-    "severity": "high"
-  }},
-  {{
-    "id": 2,
-    "title": "Short title here",
-    "description": "One or two sentence explanation with specific advice.",
-    "severity": "medium"
-  }},
-  {{
-    "id": 3,
-    "title": "Short title here",
-    "description": "One or two sentence explanation with specific advice.",
-    "severity": "low"
-  }}
-]
-
-Severity must be exactly one of: "high", "medium", or "low".
-Base your recommendations on the actual battery condition above."""
 
     try:
         response = _groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",  # Current supported Groq model
+            model="llama-3.3-70b-versatile",  
             messages=[
                 {
                     "role": "system",
@@ -499,6 +643,7 @@ def get_most_critical_battery_id():
     return fleet[0]["battery_id"]
 
 
+
 def _get_dataset_threshold(battery_id):
     """Returns the actual experimental threshold from NASA READMEs."""
     try:
@@ -510,7 +655,8 @@ def _get_dataset_threshold(battery_id):
         pass
     return 70.0 # Standard fallback
 
-def get_battery_health(battery_id):
+
+def get_battery_health_details(battery_id):
     """
     Returns health details for a specific battery using REAL historical data.
     """
@@ -525,7 +671,7 @@ def get_battery_health(battery_id):
     pred = _predictor.predict(latest.to_dict())
     soh = pred["predictions"].get("soh", {}).get("value_percent", 0)
     
-    chart_payload = get_chart_payload(battery_id)
+    chart_payload = get_historical_data(battery_id)
     
     # Map the labels for regime history based on the historical part of the chart
     historical_soh = [x for x in chart_payload["datasets"][0]["data"] if x is not None]
@@ -537,6 +683,17 @@ def get_battery_health(battery_id):
 
     # Consistent regime based on SoH thresholds for visual clarity
     current_regime = "NORMAL" if soh >= 86 else ("WARNING" if soh >= 75 else "CRITICAL")
+
+    # Generate personalized recommendations
+    recos = get_recommendations({
+        "battery_id": battery_id,
+        "soh": round(float(soh), 1),
+        "rul": int(pred["predictions"].get("rul", {}).get("value_cycles", 0)),
+        "regime": current_regime,
+        "re": round(float(latest.get('Re', 0)), 4),
+        "temperature": float(latest.get('ambient_temperature', 24.0)),
+        "total_cycles": int(latest['cycle_number']),
+    })
 
     return {
         "battery_id": battery_id,
@@ -551,6 +708,7 @@ def get_battery_health(battery_id):
         "regime": current_regime,
         "regime_history": regime_history,
         "cycle_labels": chart_payload["labels"][:len(historical_soh)],
+        "recommendations": recos
     }
 
 
@@ -672,7 +830,7 @@ def get_degradation_chart_data():
          # To connect them, the 180th point (index 179) should probably be the start.
     }
 
-def get_chart_payload(battery_id):
+def get_historical_data(battery_id):
     """
     Returns real historical data and predictive trend for the dashboard chart.
     """
