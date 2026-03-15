@@ -430,28 +430,42 @@ def get_recommendations(battery_data=None):
     # Build a high-fidelity engineering prompt for fleet operators
     prompt = f"""
     You are ZORA, the Advanced Diagnostic Intelligence for EV Fleet Operations.
-    Subject Asset: Battery Unit {battery_data.get('battery_id')}
-    
-    Technical State Profile:
-    - Current SoH: {battery_data.get('soh')}%
-    - Calculated RUL: {battery_data.get('rul')} charge/discharge cycles
-    - Impedance Measurement (Re): {battery_data.get('re')} Ω
-    - Active Degradation Regime: {battery_data.get('regime')}
-    - Cycle Exposure: {battery_data.get('total_cycles')} cycles
-    
-    CRITICAL TASK: Provide 3 specific, engineering-grade "Maintenance Directives" for this unit.
-    USER PERSONA: Fleet Maintenance Lead / Battery Logistics Engineer.
-    
-    REQUIREMENTS:
-    1. PROHIBITED: Do not use generic titles like "Replace Battery" or "Check Temperature".
-    2. MANDATORY: Use specific technical terms (e.g. SEI Layer Stabilization, BMS Voltage Cutoff Adjustment, Thermal Ramp Rate Limitation).
-    3. PERSONALIZATION: Each description must explicitly mention why Unit {battery_data.get('battery_id')}'s specific metrics (SoH, Re, or RUL) justify the action.
-    
-    NASA DATASET DIAGNOSTICS: 
-    - Resistance (Re) > 0.085Ω indicates significant electrolyte decomposition or SEI growth.
-    - SoH < 80% marks the "knee" point where capacity loss becomes non-linear.
-    
-    Respond STRICTLY with a JSON list of 3 objects: {{"id": int, "title": "Directive Name", "description": "Technical justification using Unit {battery_data.get('battery_id')}'s data point.", "severity": "high/medium/low"}}.
+
+Subject Asset: Battery Unit {battery_data.get('battery_id')}
+
+Technical State Profile:
+- Current State of Health (SoH): {battery_data.get('soh')}%
+- Remaining Useful Life (RUL): {battery_data.get('rul')} charge/discharge cycles
+- Internal Resistance (Re): {battery_data.get('re')} Ω
+- Active Degradation Regime: {battery_data.get('regime')}
+- Total Cycle Exposure: {battery_data.get('total_cycles')} cycles
+
+MISSION:
+Act as a Fleet Battery Reliability Engineer. Your goal is to provide CLEAR, ACTIONABLE maintenance instructions that a technician can execute immediately.
+
+CRITICAL TASK:
+Generate 3 engineering-grade Maintenance Directives. 
+
+STRUCTURE REQUIREMENTS:
+1. **Title (The "What")**: Must be a direct, point-blank operational action (e.g., "Limit Charge Current to 0.4C", "Reassign to Light-Duty Route").
+2. **Description (The "Why")**: Must be an engineering justification that explains why this action is necessary for Unit {battery_data.get('battery_id')} based on its metrics (SoH, Re, or RUL).
+
+DIRECTIVE RULES:
+- PROHIBITED: Do not use generic titles like "Replace Battery" or "Check Temperature".
+- TECHNICAL: Use precise electrochemical or battery engineering terminology in the description.
+- PERSONALIZED: Link every instruction to Unit {battery_data.get('battery_id')}'s CURRENT data points.
+
+NASA DATASET INSIGHTS:
+- Re > 0.085Ω = Severe electrolyte decomposition/SEI growth.
+- SoH < 80% = Acceleration "knee" region.
+
+Respond STRICTLY with a JSON list of 3 objects:
+{{
+"id": int,
+"title": "Operational Action Name",
+"description": "Engineering justification referencing specific battery metrics",
+"severity": "high | medium | low"
+}}
     """
 
 
