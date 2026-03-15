@@ -170,7 +170,7 @@ const renderChart = async () => {
                 borderDash: [5, 5],
                 label: {
                   display: true,
-                  content: 'Industry EOL (70%)',
+                  content: 'Critical (70%)',
                   position: 'end',
                   backgroundColor: 'rgba(239, 68, 68, 0.8)',
                   color: '#fff',

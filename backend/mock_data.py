@@ -116,6 +116,31 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FEATS_PATH = os.path.join(BASE_DIR, "ml/results/final_features.csv")
 TRIAGE_RULES_PATH = os.path.join(BASE_DIR, "ml/results/fleet_triage_rules.json")
 
+# Dynamically filtered batteries based on training completeness
+_valid_battery_ids = None
+
+def _identify_valid_batteries(df):
+    """
+    Identifies batteries that have both SoH and RUL data.
+    Batteries without both were likely skipped during training.
+    """
+    global _valid_battery_ids
+    if df.empty:
+        _valid_battery_ids = set()
+        return
+        
+    # A battery is valid if it has at least one non-null, non-zero entry for BOTH
+    # Actually, check if ANY entry has non-null SoH and RUL
+    valid = []
+    for bid in df['battery_id'].unique():
+        b_df = df[df['battery_id'] == bid]
+        has_soh = b_df['SoH_Global'].notnull().any() and not (b_df['SoH_Global'] == 0).all()
+        has_rul = b_df['RUL'].notnull().any() and not (b_df['RUL'] == 0).all()
+        if has_soh and has_rul:
+            valid.append(bid)
+    
+    _valid_battery_ids = set(valid)
+
 # Initialize real-time components
 _predictor = ZoraPredictor()
 _cached_df = None
@@ -128,6 +153,7 @@ def _get_data():
             try:
                 # Reload if file exists, even if we previously cached an empty one
                 _cached_df = pd.read_csv(FEATS_PATH)
+                _identify_valid_batteries(_cached_df)
             except Exception as e:
                 _cached_df = pd.DataFrame()
         else:
@@ -159,7 +185,20 @@ def get_dashboard_stats(battery_id="B0005"):
         }
 
     # Sort by cycle to ensure iloc[-1] is actually the latest
+    # Sort and filter noise (Cycle < 5 often has initialization spikes)
     battery_df = df[df['battery_id'] == battery_id].sort_values('cycle_number')
+    battery_df = battery_df[battery_df['cycle_number'] >= 5]
+    
+    if battery_df.empty:
+        return {
+            "health_score": 87,
+            "health_status": "Mock (Data Missing)",
+            "remaining_useful_life": "3.5 Years",
+            "current_capacity": 48.5,
+            "original_capacity": 55.0,
+            "total_cycles": 420,
+            "efficiency": 92,
+        }
     latest = battery_df.iloc[-1]
     
     # Run real prediction
@@ -514,7 +553,14 @@ def get_fleet_triage():
     fleet = []
     unique_ids = df['battery_id'].unique()
     
+    global _valid_battery_ids
+    if _valid_battery_ids is None:
+        _get_data() # Triggers identification
+        
     for bid in unique_ids:
+        if _valid_battery_ids is not None and bid not in _valid_battery_ids:
+            continue
+            
         # Hot-reload models if they were missing during startup
         if _predictor.rul_bundle is None or _predictor.triage_rules is None:
             _predictor.__init__()
@@ -590,12 +636,17 @@ def get_fleet_analytics():
         "inference_ms": 42
     }
 
+    if _valid_battery_ids is None:
+        _get_data()
+
+    active_count = len(latest_per_battery[latest_per_battery['battery_id'].isin(_valid_battery_ids)]) if _valid_battery_ids else 0
+
     return {
         "temperature_distribution": temp_summary,
         "avg_resistance_ohm": avg_re,
         "total_fleet_cycles": total_cycles,
         "model_performance": model_performance,
-        "active_batteries": len(latest_per_battery)
+        "active_batteries": active_count
     }
 
 def get_most_critical_battery_id():
@@ -704,7 +755,9 @@ def simulate_temperature(battery_id, temp, load_current=2.0, usage_intensity=1.0
 
     # If base_rul is 0 or very low, we allow the simulation to show what *would* happen 
     # if conditions were better, using a small buffer for "potential" cycles.
-    effective_base = base_rul if base_rul > 2 else 5
+    # For a battery with 0 RUL, it remains 0 unless conditions improve
+    # But even then, if it is physically chemical-dead (0 RUL), we should be realistic.
+    effective_base = float(base_rul)
     
     total_factor = max(0.1, 1.0 - (thermal_penalty + load_penalty + intensity_penalty))
     adjusted_rul = round(effective_base * total_factor)
@@ -807,6 +860,7 @@ def get_historical_data(battery_id):
         }
 
     battery_df = df[df['battery_id'] == battery_id].sort_values('cycle_number')
+    battery_df = battery_df[battery_df['cycle_number'] >= 5]
     
     # 1. Historical Actual Data (Last 100 cycles)
     history = battery_df.tail(100)
