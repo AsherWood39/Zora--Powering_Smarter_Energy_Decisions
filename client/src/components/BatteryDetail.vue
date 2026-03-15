@@ -10,7 +10,7 @@
           <span class="material-icons-round title-icon">battery_charging_full</span>
           <h2>{{ batteryId }}</h2>
           <span class="status-pill" :class="data?.status">
-            {{ data?.soh < 70 ? 'EOL / CRITICAL' : (data?.soh < 80 ? 'WARNING' : 'NORMAL') }}
+            {{ data?.soh < 70 ? 'CRITICAL' : (data?.soh < 80 ? 'WARNING' : 'NORMAL') }}
           </span>
         </div>
       </div>
@@ -401,7 +401,7 @@ const renderChart = () => {
               borderDash: [5, 5],
               label: {
                 display: true,
-                content: 'Industry EOL (70%)',
+                content: 'Critical (70%)',
                 position: 'end',
                 backgroundColor: 'rgba(239, 68, 68, 0.8)',
                 color: '#fff',
