@@ -114,6 +114,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import axios from 'axios';
+import api from '../api.js';
 
 const fleet = ref([]);
 const analytics = ref({});
@@ -122,8 +123,8 @@ const loading = ref(true);
 const fetchAnalytics = async () => {
   try {
     const [fleetRes, analyticsRes] = await Promise.all([
-      axios.get('/api/fleet/triage'),
-      axios.get('/api/analytics/summary')
+      axios.get(api.fleetTriage),
+      axios.get(api.analytics)
     ]);
     
     console.log('[DEBUG] Fleet API Response:', fleetRes.data);

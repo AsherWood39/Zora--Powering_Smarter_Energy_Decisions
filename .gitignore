@@ -9,8 +9,7 @@ data_planning.md
 Zora-DOC.md
 progress_checklist.md
 results/
-Screenshot 2026-03-10 161521.png
-backend/test_api.py
+docs/*
 
 # Brain/Artifacts (Agent)
 .gemini/

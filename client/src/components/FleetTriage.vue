@@ -79,6 +79,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
+import api from '../api.js';
 
 const emit = defineEmits(['select-battery']);
 
@@ -101,7 +102,7 @@ const groupedFleet = computed(() => {
 
 onMounted(async () => {
   try {
-    const res = await axios.get('/api/fleet/triage');
+    const res = await axios.get(api.fleetTriage);
     fleet.value = res.data;
   } catch (e) {
     console.error('Fleet triage fetch error:', e);

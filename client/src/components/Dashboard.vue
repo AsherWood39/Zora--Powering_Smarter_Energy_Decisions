@@ -95,6 +95,7 @@ import { ref, onMounted } from 'vue';
 import axios from 'axios';
 import Chart from 'chart.js/auto';
 import annotationPlugin from 'chartjs-plugin-annotation';
+import api from '../api.js';
 
 Chart.register(annotationPlugin);
 
@@ -109,7 +110,7 @@ const getIcon = (severity) => {
 
 const renderChart = async () => {
   try {
-    const response = await axios.get('/api/data');
+    const response = await axios.get(api.chartData);
     const data = response.data;
     
     const ctx = document.getElementById('degradationChart').getContext('2d');
@@ -223,7 +224,7 @@ const renderChart = async () => {
 
 const fetchRecommendations = async () => {
     try {
-        const response = await axios.get('/api/dashboard');
+        const response = await axios.get(api.dashboard);
         recommendations.value = response.data.recommendations;
         stats.value = response.data.stats;
     } catch (err) {

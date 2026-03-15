@@ -1,12 +1,13 @@
 flask
 flask-cors
+gunicorn
 pandas
 numpy
-matplotlib 
-scikit-learn 
+matplotlib
+scikit-learn
 xgboost
 tqdm
-dotenv
+python-dotenv
 requests
 groq
 fpdf2

@@ -101,6 +101,7 @@ import FleetTriage  from './components/FleetTriage.vue';
 import BatteryDetail from './components/BatteryDetail.vue';
 import ModelInfo     from './components/ModelInfo.vue';
 import Analytics     from './components/Analytics.vue';
+import api from './api.js';
 
 const currentView    = ref('dashboard');
 const selectedBattery = ref(null);
@@ -115,7 +116,7 @@ const openBattery = (batteryId) => {
 
 const handleExport = () => {
   // Use the currently analyzed battery ID (default to critical if none selected)
-  window.open(`/api/export/report`, '_blank');
+  window.open(api.report(''), '_blank');
 };
 
 const checkScrollability = () => {
