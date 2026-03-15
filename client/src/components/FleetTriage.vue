@@ -3,9 +3,10 @@
     <div class="fleet-header">
       <h2>⚡ Fleet Triage</h2>
       <div class="fleet-summary">
-        <span class="badge critical">🔴 {{ criticalCount }} Critical</span>
+        <span class="badge healthy">🟢 {{ healthyCount }} Healthy</span>
         <span class="badge warning">🟡 {{ warningCount }} Warning</span>
-        <span class="badge good">🟢 {{ goodCount }} Good</span>
+        <span class="badge critical">🔴 {{ criticalCount }} Critical</span>
+        <span class="badge eol">💀 {{ eolCount }} EOL</span>
       </div>
     </div>
 
@@ -85,9 +86,16 @@ const emit = defineEmits(['select-battery']);
 const fleet = ref([]);
 const loading = ref(true);
 
-const criticalCount = computed(() => fleet.value.filter(b => b.status === 'critical').length);
-const warningCount  = computed(() => fleet.value.filter(b => b.status === 'warning').length);
-const goodCount     = computed(() => fleet.value.filter(b => b.status === 'good').length);
+const eolCount      = computed(() => fleet.value.filter(b => (b.status || '').toLowerCase() === 'eol').length);
+const criticalCount = computed(() => fleet.value.filter(b => (b.status || '').toLowerCase() === 'critical').length);
+const warningCount  = computed(() => fleet.value.filter(b => {
+    const s = (b.status || '').toLowerCase();
+    return s === 'warning' || s === 'risk';
+}).length);
+const healthyCount  = computed(() => fleet.value.filter(b => {
+    const s = (b.status || '').toLowerCase();
+    return s === 'healthy' || s === 'good';
+}).length);
 
 const groupedFleet = computed(() => {
   const groups = {};
@@ -143,9 +151,10 @@ onMounted(async () => {
   border-radius: 20px;
   letter-spacing: 0.02em;
 }
+.badge.eol { background: rgba(71, 85, 105, 0.15); color: #94a3b8; border: 1px solid rgba(71, 85, 105, 0.3); }
 .badge.critical { background: rgba(239,68,68,0.15); color: #f87171; }
-.badge.warning  { background: rgba(245,158,11,0.15); color: #fbbf24; }
-.badge.good     { background: rgba(16,185,129,0.15);  color: #34d399; }
+.badge.warning, .badge.risk { background: rgba(245,158,11,0.15); color: #fbbf24; }
+.badge.healthy, .badge.good { background: rgba(16,185,129,0.15);  color: #34d399; }
 
 /* Skeleton loading */
 .loading-state { display: flex; flex-direction: column; gap: 0.7rem; }
@@ -216,8 +225,11 @@ onMounted(async () => {
   border-color: rgba(99,102,241,0.4);
   transform: translateX(3px);
 }
+.battery-row.status-eol      { border-left: 3px solid #64748b; filter: grayscale(0.5); }
 .battery-row.status-critical { border-left: 3px solid #ef4444; }
-.battery-row.status-warning  { border-left: 3px solid #f59e0b; }
+.battery-row.status-warning,
+.battery-row.status-risk     { border-left: 3px solid #f59e0b; }
+.battery-row.status-healthy,
 .battery-row.status-good     { border-left: 3px solid #10b981; }
 
 .status-dot {
@@ -225,8 +237,11 @@ onMounted(async () => {
   border-radius: 50%;
   flex-shrink: 0;
 }
+.status-dot.eol      { background: #64748b; box-shadow: none; }
 .status-dot.critical { background: #ef4444; box-shadow: 0 0 6px #ef4444; }
-.status-dot.warning  { background: #f59e0b; box-shadow: 0 0 6px #f59e0b; }
+.status-dot.warning,
+.status-dot.risk     { background: #f59e0b; box-shadow: 0 0 6px #f59e0b; }
+.status-dot.healthy,
 .status-dot.good     { background: #10b981; box-shadow: 0 0 6px #10b981; }
 
 .battery-id { display: flex; flex-direction: column; gap: 0.2rem; }
@@ -240,7 +255,7 @@ onMounted(async () => {
   letter-spacing: 0.05em;
 }
 .regime-normal      { background: rgba(16,185,129,0.15); color: #34d399; }
-.regime-warning { background: rgba(245,158,11,0.15); color: #fbbf24; }
+.regime-warning { background: rgba(245,158,11,0.15); color: #f59e0b; }
 .regime-critical,
 .regime-anomalous   { background: rgba(239,68,68,0.15);  color: #f87171; }
 
@@ -258,8 +273,11 @@ onMounted(async () => {
   border-radius: 4px;
   transition: width 0.6s ease;
 }
+.soh-bar.eol      { background: #475569; }
 .soh-bar.critical { background: linear-gradient(90deg, #ef4444, #f87171); }
-.soh-bar.warning  { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.soh-bar.warning,
+.soh-bar.risk     { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.soh-bar.healthy,
 .soh-bar.good     { background: linear-gradient(90deg, #10b981, #34d399); }
 .soh-value { font-size: 0.82rem; font-weight: 700; color: #cbd5e1; width: 42px; text-align: right; }
 

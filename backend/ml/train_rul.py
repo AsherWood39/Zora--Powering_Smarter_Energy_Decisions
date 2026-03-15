@@ -32,10 +32,13 @@ def train_rul():
 
     FEATURE_COLS = [
         'cycle_number', 'Re_rel', 'Rct_rel', 'capacity_rel', 'resistance_ratio',
-        'ts_ohmic_drop', 'ts_time_to_35v', 'ts_dvdt_mid', 'ts_ica_peak',
+        'ts_ohmic_drop', 'ts_time_to_35v', 'ts_dvdt_mid',
+        'ts_ica_peak_height', 'ts_ica_peak_pos', 'ts_ica_area',
         'rct_roll_std', 'voltage_drop_roll_mean',
         'early_cap_mean', 'early_rct_mean',
-        'meta_current_num', 'meta_cutoff_num', 'meta_rated_cap', 'thermal_delta'
+        'meta_current_num', 'meta_cutoff_num', 'meta_rated_cap', 'thermal_delta',
+        'charge_time', 'CC_duration', 'CV_duration', 'discharge_energy',
+        'cap_slope_10', 'rct_growth_10'
     ]
 
     import re

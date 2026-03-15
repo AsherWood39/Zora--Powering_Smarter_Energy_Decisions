@@ -2,13 +2,15 @@
   <div class="dashboard-grid" v-if="stats">
     <!-- KPI Cards -->
     <div class="card kpi-card">
-      <div class="icon-box warning">
+      <div class="icon-box" :class="stats.health_status">
         <span class="material-icons-round">battery_alert</span>
       </div>
       <div class="kpi-info">
         <h3>Health Score</h3>
         <div class="value">{{ stats.health_score }}%</div>
-        <span class="status warning">Needs Attention</span>
+        <span class="status" :class="stats.health_status">
+          {{ stats.health_status.toLowerCase() === 'healthy' ? 'Optimal' : (stats.health_status.toLowerCase() === 'warning' ? 'Monitor' : (stats.health_status.toLowerCase() === 'eol' ? 'Decommissioned' : 'Critical')) }}
+        </span>
       </div>
       <div class="progress-ring" :style="`--value:${stats.health_score}`"></div>
     </div>
@@ -20,7 +22,7 @@
       <div class="kpi-info">
         <h3>RUL Estimate</h3>
         <div class="value">{{ stats.remaining_useful_life }}</div>
-        <span class="status good">On Track</span>
+        <span class="status healthy">On Track</span>
       </div>
     </div>
 
@@ -31,7 +33,7 @@
       <div class="kpi-info">
         <h3>Efficiency</h3>
         <div class="value">{{ stats.efficiency }}%</div>
-        <span class="status good">+2% this week</span>
+        <span class="status healthy">+2% this week</span>
       </div>
     </div>
 

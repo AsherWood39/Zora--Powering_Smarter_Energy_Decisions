@@ -216,9 +216,19 @@ a {
     justify-content: center;
 }
 
-.icon-box.warning {
+.icon-box.warning, .icon-box.Warning {
     background-color: rgba(245, 158, 11, 0.1);
     color: var(--accent-warning);
+}
+
+.icon-box.critical, .icon-box.Critical {
+    background-color: rgba(239, 68, 68, 0.1);
+    color: var(--accent-danger);
+}
+
+.icon-box.eol, .icon-box.Eol {
+    background-color: rgba(148, 163, 184, 0.1);
+    color: var(--text-secondary);
 }
 
 .icon-box.primary {
@@ -226,7 +236,7 @@ a {
     color: var(--accent-primary);
 }
 
-.icon-box.success {
+.icon-box.success, .icon-box.healthy, .icon-box.Healthy {
     background-color: rgba(16, 185, 129, 0.1);
     color: var(--accent-success);
 }
@@ -250,12 +260,22 @@ a {
     border-radius: 4px;
 }
 
-.status.warning {
+.status.warning, .status.Warning {
     background-color: rgba(245, 158, 11, 0.1);
     color: var(--accent-warning);
 }
 
-.status.good {
+.status.critical, .status.Critical {
+    background-color: rgba(239, 68, 68, 0.1);
+    color: var(--accent-danger);
+}
+
+.status.eol, .status.Eol {
+    background-color: rgba(148, 163, 184, 0.1);
+    color: var(--text-secondary);
+}
+
+.status.good, .status.healthy, .status.Healthy {
     background-color: rgba(16, 185, 129, 0.1);
     color: var(--accent-success);
 }

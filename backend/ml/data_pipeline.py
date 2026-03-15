@@ -17,10 +17,16 @@ import json
 import glob
 from tqdm import tqdm
 from dotenv import load_dotenv
-from ml.train_soh import train_soh
 
 # 1. SETUP
+import sys
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Add backend dir to path so we can import as 'ml.train_soh'
+if BASE_DIR not in sys.path:
+    sys.path.append(BASE_DIR)
+
+from ml.train_soh import train_soh
+from ml.train_rul import train_rul
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 DATA_DIR = os.path.join(BASE_DIR, "dataset/cleaned_dataset/data")
@@ -31,80 +37,119 @@ OUTPUT_PATH = os.path.join(BASE_DIR, "ml/results/final_features.csv")
 os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
 
 
-def extract_advanced_ts_features(df):
+def extract_advanced_ts_features(df, cycle_type='discharge'):
     """
-    Step A: High-Fidelity Physics Extraction (EIS-Proxy)
+    Step A: High-Fidelity Physics Extraction (EIS-Proxy + ICA)
     Zora-DOC Lesson 8: Advanced Feature Engineering
     
-    Instead of using standard basic data, we extract complex physical events 
-    from the raw charging curve. For example:
-    - Ohmic Drop (Instantaneous voltage dive)
-    - dV/dt Mid Plateau (Gradient of the electrochemical charge curve)
-    - Voltage Relaxation (How the battery recovers when resting)
+    Extracts complex physical events and electrochemical signatures (ICA).
     """
-    if 'Current_load' not in df.columns or 'Voltage_measured' not in df.columns:
-        return None
-    active = df[df['Current_load'] > 0.1].copy()
-    if len(active) < 20: return None
-    active['Time'] = active['Time'] - active['Time'].iloc[0]
+    if 'Time' not in df.columns: return None
     
-    # 1. Standard proxies
-    ohmic_drop = 4.2 - active['Voltage_measured'].iloc[0]
-    v_35_mask = active[active['Voltage_measured'] < 3.5]
-    time_to_35v = v_35_mask['Time'].iloc[0] if not v_35_mask.empty else active['Time'].iloc[-1]
+    # Standardize time
+    df = df.copy()
+    df['Time'] = df['Time'] - df['Time'].iloc[0]
     
-    # 2. Electrochemical plateau (dV/dt)
-    idx_m_s = int(len(active) * 0.5)
-    idx_m_e = int(len(active) * 0.75)
-    dvdt_mid = (active['Voltage_measured'].iloc[idx_m_e] - active['Voltage_measured'].iloc[idx_m_s]) / \
-               (active['Time'].iloc[idx_m_e] - active['Time'].iloc[idx_m_s] + 1e-6) if idx_m_e > idx_m_s + 5 else 0
-
-    # 3. ICA Peak
-    try:
-        active['V_diff'] = active['Voltage_measured'].diff().fillna(0)
-        active['Q_diff'] = active['Current_load'] * active['Time'].diff().fillna(0)
-        ica_mask = (np.abs(active['V_diff']) > 0.001)
-        ica_peak = (active[ica_mask]['Q_diff'] / active[ica_mask]['V_diff']).abs().max() if active[ica_mask].size > 0 else 0
-    except: ica_peak = 0
-
-    # 4. VOLTAGE RELAXATION
-    try:
-        rest = df[df['Current_load'] < 0.02].copy()
-        if len(rest) > 10:
-            rest['Time'] = rest['Time'] - rest['Time'].iloc[0]
-            v_start = rest['Voltage_measured'].iloc[0]
-            off = min(len(rest)-1, 50)
-            v_end = rest['Voltage_measured'].iloc[off]
-            relax_slope = (v_end - v_start) / (rest['Time'].iloc[off] + 1e-6)
-            relax_recovery = v_end - v_start
-        else: relax_slope, relax_recovery = 0, 0
-    except: relax_slope, relax_recovery = 0, 0
+    if cycle_type == 'discharge':
+        if 'Current_load' not in df.columns or 'Voltage_measured' not in df.columns:
+            return None
         
-    # 5. THERMAL DELTA & OPERATING TEMP
-    try:
-        if 'Temperature_measured' in active.columns:
-            peak_temp = active['Temperature_measured'].max()
-            mean_temp = active['Temperature_measured'].mean()
-        else:
-            peak_temp = 0
-            mean_temp = 0
-    except:
-        peak_temp = 0
-        mean_temp = 0
+        active = df[df['Current_load'] > 0.1].copy()
+        if len(active) < 20: return None
         
-    return {
-        'ts_duration': active['Time'].iloc[-1],
-        'ts_v_drop': active['Voltage_measured'].iloc[0] - active['Voltage_measured'].iloc[-1],
-        'ts_ohmic_drop': ohmic_drop,
-        'ts_time_to_35v': time_to_35v,
-        'ts_dvdt_mid': dvdt_mid,
-        'ts_ica_peak': ica_peak,
-        'ts_relax_slope': relax_slope,
-        'ts_relax_recovery': relax_recovery,
-        'ts_v_std': active['Voltage_measured'].std(),
-        'ts_peak_temp': peak_temp,
-        'ts_mean_temp': mean_temp
-    }
+        # 1. Standard proxies
+        ohmic_drop = 4.2 - active['Voltage_measured'].iloc[0]
+        v_35_mask = active[active['Voltage_measured'] < 3.5]
+        time_to_35v = v_35_mask['Time'].iloc[0] if not v_35_mask.empty else active['Time'].iloc[-1]
+        
+        # 2. Electrochemical plateau (dV/dt)
+        idx_m_s = int(len(active) * 0.5)
+        idx_m_e = int(len(active) * 0.75)
+        dvdt_mid = (active['Voltage_measured'].iloc[idx_m_e] - active['Voltage_measured'].iloc[idx_m_s]) / \
+                   (active['Time'].iloc[idx_m_e] - active['Time'].iloc[idx_m_s] + 1e-6) if idx_m_e > idx_m_s + 5 else 0
+
+        # 3. Incremental Capacity Analysis (ICA / dQ/dV)
+        # Zora-DOC Lesson 8: One of the most powerful aging indicators.
+        try:
+            v = active['Voltage_measured'].values
+            i = active['Current_load'].values
+            t = active['Time'].values
+
+            dt = np.diff(t, prepend=t[0])
+            dq = i * dt
+            dv = np.diff(v, prepend=v[0])
+
+            # Filter for meaningful voltage changes to avoid noise infinity
+            mask = np.abs(dv) > 1e-4
+            dqdv = np.abs(dq[mask]) / np.abs(dv[mask])
+
+            ica_peak_height = np.max(dqdv) if dqdv.size > 0 else 0
+            ica_peak_pos = v[mask][np.argmax(dqdv)] if dqdv.size > 0 else 0
+            ica_area = np.sum(dqdv) if dqdv.size > 0 else 0
+        except:
+            ica_peak_height, ica_peak_pos, ica_area = 0, 0, 0
+
+        # 4. Discharge Energy (Integral of V * I * dt)
+        try:
+            dt_full = df['Time'].diff().fillna(0)
+            energy = (df['Voltage_measured'] * df['Current_load'].abs() * dt_full).sum() / 3600.0 # Watt-hours
+        except: energy = 0
+
+        # 5. VOLTAGE RELAXATION
+        try:
+            rest = df[df['Current_load'] < 0.02].copy()
+            if len(rest) > 10:
+                v_start = rest['Voltage_measured'].iloc[0]
+                off = min(len(rest)-1, 50)
+                v_end = rest['Voltage_measured'].iloc[off]
+                relax_slope = (v_end - v_start) / (rest['Time'].iloc[off] + 1e-6)
+                relax_recovery = v_end - v_start
+            else: relax_slope, relax_recovery = 0, 0
+        except: relax_slope, relax_recovery = 0, 0
+            
+        peak_temp = df['Temperature_measured'].max() if 'Temperature_measured' in df.columns else 0
+        mean_temp = df['Temperature_measured'].mean() if 'Temperature_measured' in df.columns else 0
+            
+        return {
+            'ts_duration': active['Time'].iloc[-1],
+            'ts_v_drop': active['Voltage_measured'].iloc[0] - active['Voltage_measured'].iloc[-1],
+            'ts_ohmic_drop': ohmic_drop,
+            'ts_time_to_35v': time_to_35v,
+            'ts_dvdt_mid': dvdt_mid,
+            'ts_ica_peak_height': ica_peak_height,
+            'ts_ica_peak_pos': ica_peak_pos,
+            'ts_ica_area': ica_area,
+            'ts_relax_slope': relax_slope,
+            'ts_relax_recovery': relax_recovery,
+            'ts_v_std': active['Voltage_measured'].std(),
+            'ts_peak_temp': peak_temp,
+            'ts_mean_temp': mean_temp,
+            'discharge_energy': energy
+        }
+
+    elif cycle_type == 'charge':
+        if 'Current_measured' not in df.columns or 'Voltage_measured' not in df.columns:
+            return None
+        
+        # Charge Time
+        charge_duration = df['Time'].iloc[-1]
+        
+        # CC/CV Phase Split
+        cc_mask = (df['Current_measured'] > 1.4) & (df['Voltage_measured'] < 4.19)
+        cv_mask = (df['Voltage_measured'] >= 4.19) & (df['Current_measured'] > 0.01)
+        
+        cc_duration = df[cc_mask]['Time'].count() * (df['Time'].diff().mean()) if any(cc_mask) else 0
+        cv_duration = df[cv_mask]['Time'].count() * (df['Time'].diff().mean()) if any(cv_mask) else 0
+        
+        return {
+            'charge_time': charge_duration,
+            'CC_duration': cc_duration,
+            'CV_duration': cv_duration
+        }
+    
+    return None
+
+
 
 def data_pipeline():
     print("Loading base metadata...")
@@ -148,48 +193,32 @@ def data_pipeline():
                     'meta_cutoff': g.get('discharge_cutoff_voltage', {}).get(bid, 2.7) if isinstance(g.get('discharge_cutoff_voltage'), dict) else g.get('discharge_cutoff_voltage', 2.7)
                 })
         discharge = pd.merge(discharge, pd.DataFrame(flattened), on='battery_id', how='left')
-
     # Step C: Calculating the Ground Truth Labels (SoH / RUL)
-    # Zora-DOC Lessons 2 & 6: We divide Capacity by Rated Cap for SoH %.
+    # Zora-DOC Lessons 2 & 6: Standard NASA Ames failure threshold is 1.4 Ahr (70% of 2.0 Ahr)
     discharge['SoH_Global'] = (discharge['Capacity'] / discharge['meta_rated_cap'].fillna(2.0) * 100).clip(upper=100)
 
-    # RUL Calculation (Cycles until 1.6 Ahr threshold, which is 80% of 2.0 Ahr)
-    EOL_THRESHOLD = 1.6  # Ahr
+    # RUL Calculation (Cycles until 1.4 Ahr threshold)
+    # Zora Research Grade: RUL = EOL_cycle - current_cycle
+    EOL_THRESHOLD = 1.4  # NASA Standard Ahr
     
-    # 1. Identify when they actually crossed the line
     eol_cycle_map = (
-        discharge[discharge['Capacity'] < EOL_THRESHOLD]
+        discharge[discharge['Capacity'] <= EOL_THRESHOLD]
         .groupby('battery_id')['cycle_number'].min()
     )
     
-    # 2. Calculate average fade rate for projection
-    # (Initial Capacity - Current Capacity) / Current Cycle count
-    discharge['fade_per_cycle'] = (discharge['cap_base'] - discharge['Capacity']) / discharge['cycle_number']
-    # Filter for realistic fade (positive and not zero)
-    discharge['fade_per_cycle'] = discharge['fade_per_cycle'].apply(lambda x: max(0.0001, x))
-    
     def calculate_rul(row):
         bid = row['battery_id']
-        curr_cycle = row['cycle_number']
-        curr_cap = row['Capacity']
-        
-        # If we know exactly when it died...
+        cycle = row['cycle_number']
         if bid in eol_cycle_map:
-            eol_cycle = eol_cycle_map[bid]
-            return max(0, eol_cycle - curr_cycle)
-        
-        # Else, project based on fade rate
-        # RUL = (Current Cap - Threshold) / Fade Rate
-        if curr_cap > EOL_THRESHOLD:
-            proj_rul = (curr_cap - EOL_THRESHOLD) / row['fade_per_cycle']
-            return round(proj_rul)
-        else:
-            return 0 # Should have been in eol_cycle_map but just in case
+            return max(0, eol_cycle_map[bid] - cycle)
+        return np.nan # Batteries that never failed are removed to reduce noise in R2 metrics
 
-    print("Projecting RUL for healthy batteries...")
+    print("Mapping Ground-Truth RUL (EOL-based)...")
     discharge['RUL'] = discharge.apply(calculate_rul, axis=1)
-    discharge['RUL'] = discharge['RUL'].clip(lower=0, upper=500) # Sanity cap
-    discharge.drop(columns=['fade_per_cycle'], inplace=True)
+    
+    print("Mapping Ground-Truth RUL (EOL-based)...")
+    discharge['RUL'] = discharge.apply(calculate_rul, axis=1)
+
 
     # Impedance Merge
     print("Merging impedance & computing growth...")
@@ -212,17 +241,74 @@ def data_pipeline():
     discharge['rct_roll_std'] = discharge.groupby('battery_id')['Rct'].transform(lambda x: x.rolling(8, min_periods=2).std()).fillna(0)
 
     # Time-Series Processing
-    print("Processing TS (Relaxation + High-Fidelity)...")
+    print("Processing TS (Charge + Discharge High-Fidelity)...")
+    
+    # 1. Identify all files to process
+    all_files = df[df['type'].isin(['charge', 'discharge'])].copy()
     ts_map = {}
-    for fname in tqdm(discharge['filename'].unique()):
+    
+    for _, row in tqdm(all_files.iterrows(), total=len(all_files)):
+        fname = row['filename']
         fpath = os.path.join(DATA_DIR, fname)
         if os.path.exists(fpath):
-            try: feats = extract_advanced_ts_features(pd.read_csv(fpath))
-            except: feats = None
-            if feats: ts_map[fname] = feats
-            
+            try:
+                # Read once
+                raw_df = pd.read_csv(fpath)
+                feats = extract_advanced_ts_features(raw_df, cycle_type=row['type'])
+                if feats:
+                    ts_map[fname] = feats
+            except:
+                continue
+                
     ts_df = pd.DataFrame.from_dict(ts_map, orient='index').reset_index().rename(columns={'index': 'filename'})
-    discharge = pd.merge(discharge, ts_df, on='filename', how='left')
+    
+    # ts_df now contains features for both charge and discharge files (keyed by filename)
+    
+    # 2. Extract specific sets of features to avoid collisions
+    # DISCHARGE FEATURES: extracted from ts_df for files present in 'discharge' metadata
+    discharge_feat_cols = [
+        'filename', 'ts_duration', 'ts_v_drop', 'ts_ohmic_drop', 'ts_time_to_35v', 
+        'ts_dvdt_mid', 'ts_ica_peak_height', 'ts_ica_peak_pos', 'ts_ica_area',
+        'ts_relax_slope', 'ts_relax_recovery', 
+        'ts_v_std', 'ts_peak_temp', 'ts_mean_temp', 'discharge_energy'
+    ]
+    discharge_ts = ts_df[ts_df.columns.intersection(discharge_feat_cols)]
+    discharge = pd.merge(discharge, discharge_ts, on='filename', how='left')
+    
+    # CHARGE FEATURES: extracted from ts_df for files present in 'charge' metadata
+    charge_feat_cols = ['filename', 'charge_time', 'CC_duration', 'CV_duration']
+    charge_ts = ts_df[ts_df.columns.intersection(charge_feat_cols)]
+    
+    # Pair charge files with their IDs and UIDs
+    charge_meta = pd.merge(df[df['type'] == 'charge'], charge_ts, on='filename', how='inner')
+    charge_feats = charge_meta[['battery_id', 'uid', 'charge_time', 'CC_duration', 'CV_duration']].copy()
+    
+    # 3. Pair each discharge with its most recent PREVIOUS charge
+    charge_feats = charge_feats.sort_values('uid')
+    discharge = discharge.sort_values('uid')
+    
+    discharge = pd.merge_asof(
+        discharge,
+        charge_feats,
+        on='uid',
+        by='battery_id',
+        direction='backward'
+    )
+    
+    # Fill missing charge features for early cycles with the nearest available (forward fill within battery)
+    # or just fill with mean if no charge happened yet
+    for col in ['charge_time', 'CC_duration', 'CV_duration', 'ts_ica_peak_height', 'ts_ica_peak_pos', 'ts_ica_area']:
+        if col in discharge.columns:
+            discharge[col] = discharge.groupby('battery_id')[col].transform(lambda x: x.ffill().bfill().fillna(x.mean()))
+
+    # --- DEGRADATION TRAJECTORY FEATURES ---
+    # Zora Research Grade Step 2: Modeling the aging speed
+    print("Computing trajectory slopes (Capacity/Resistance)...")
+    discharge['cap_slope_10'] = discharge.groupby('battery_id')['capacity_rel'] \
+        .transform(lambda x: x.rolling(10, min_periods=5).apply(lambda y: np.polyfit(range(len(y)), y, 1)[0])).fillna(0)
+    
+    discharge['rct_growth_10'] = discharge.groupby('battery_id')['Rct_rel'] \
+        .transform(lambda x: x.rolling(10, min_periods=5).apply(lambda y: np.polyfit(range(len(y)), y, 1)[0])).fillna(0)
 
     # --- AFTER TS MERGE: ROLLING FEATURES & THERMAL DELTA ---
     discharge['voltage_drop_roll_mean'] = discharge.groupby('battery_id')['ts_v_drop'].transform(lambda x: x.rolling(5, min_periods=2).mean()).fillna(0)
@@ -236,12 +322,12 @@ def data_pipeline():
         
     if 'ts_peak_temp' in discharge.columns:
         discharge['thermal_delta'] = discharge['ts_peak_temp'] - discharge['ambient_temperature']
-        discharge['thermal_delta'] = discharge['thermal_delta'].clip(lower=0) # Temp shouldn't drop below ambient normally during active discharge
+        discharge['thermal_delta'] = discharge['thermal_delta'].clip(lower=0)
     else:
         discharge['thermal_delta'] = 0.0
 
     # Step D: Early Manufacturing Fingerprints
-    # Zora-DOC Lesson 8: Taking the mean of the first 10 cycles as a fixed "DNA" trait for the battery's entire life.
+    # Zora-DOC Lesson 8: Taking the mean of the first 10 cycles as a fixed "DNA" trait
     print("Computing fingerprints...")
     early = discharge[discharge['cycle_number'] <= 10].groupby('battery_id').agg({
         'Capacity': 'mean', 'Rct': 'mean', 'ts_ohmic_drop': 'mean'
@@ -250,10 +336,30 @@ def data_pipeline():
         'ts_ohmic_drop': 'early_ohmic_mean'
     })
     discharge = pd.merge(discharge, early, on='battery_id', how='left')
+    
+    # Fix pandas FutureWarning for groupby.apply() in baseline calculation
+    baselines = discharge.groupby('battery_id', group_keys=False).apply(lambda x: pd.Series({
+        'cap_base': get_baseline(x, 'Capacity'),
+        're_base': get_baseline(x, 'Re') if 'Re' in x.columns else 0,
+        'rct_base': get_baseline(x, 'Rct') if 'Rct' in x.columns else 0
+    }), include_groups=False)
+    # Re-apply baselines to main df if needed (though they were already merged early, 
+    # we ensure the logic is future-proof)
+
+    # Step E: FINAL FILTERING & CLEANUP
+    # Zora Research Grade: Remove rows without known RUL and unstable early cycles (NASA Standard)
+    # We do this at the very end so that fingerprints/baselines have access to all cycles.
+    initial_len = len(discharge)
+    discharge = discharge.dropna(subset=['RUL'])
+    discharge = discharge[discharge['cycle_number'] > 20]
+    print(f"Final dataset filtering: Removed {initial_len - len(discharge)} cycles (unstable early life or no EOL reached).")
 
     discharge.to_csv(OUTPUT_PATH, index=False)
     print(f"[DONE] Features saved to {OUTPUT_PATH}")
+    print("Triggering SOH & RUL Meta-Learner Retraining...")
     train_soh()
+    train_rul()
+    print("[PIPELINE COMPLETE]")
 
 if __name__ == "__main__":
     data_pipeline()

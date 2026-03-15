@@ -9,8 +9,8 @@
         <div class="battery-title">
           <span class="material-icons-round title-icon">battery_charging_full</span>
           <h2>{{ batteryId }}</h2>
-          <span class="status-pill" :class="data?.status">
-            {{ data?.soh < 70 ? 'CRITICAL' : (data?.soh < 80 ? 'WARNING' : 'NORMAL') }}
+          <span class="status-pill" :class="(data?.status || '').toLowerCase()">
+            {{ (data?.status || '').toLowerCase() === 'eol' ? 'DECOMMISSIONED (EOL)' : ((data?.status || '').toLowerCase() === 'risk' ? 'WARNING' : (data?.status || '').toUpperCase()) }}
           </span>
         </div>
       </div>
@@ -30,7 +30,7 @@
       <div class="kpi-strip">
         <div class="kpi-item">
           <div class="kpi-label">State of Health</div>
-          <div class="kpi-value" :class="data.status">{{ data.soh.toFixed(1) }}%</div>
+          <div class="kpi-value" :class="(data.status || '').toLowerCase()">{{ data.soh.toFixed(1) }}%</div>
         </div>
         <div class="kpi-divider"></div>
         <div class="kpi-item">
@@ -110,6 +110,7 @@
             step="1"
             v-model.number="sliderTemp"
             class="temp-slider"
+            :disabled="(data.status || '').toLowerCase() === 'eol'"
             @input="onSimParamChange"
           />
         </div>
@@ -126,6 +127,7 @@
             step="0.5"
             v-model.number="sliderLoad"
             class="load-slider"
+            :disabled="(data.status || '').toLowerCase() === 'eol'"
             @input="onSimParamChange"
           />
         </div>
@@ -142,8 +144,14 @@
             step="0.1"
             v-model.number="sliderIntensity"
             class="intensity-slider"
+            :disabled="(data.status || '').toLowerCase() === 'eol'"
             @input="onSimParamChange"
           />
+        </div>
+
+        <div v-if="(data.status || '').toLowerCase() === 'eol'" class="eol-simulator-lockout">
+          <span class="material-icons-round">lock</span>
+          Simulation disabled for decommissioned (EOL) units.
         </div>
 
         <div class="temp-result" v-if="simResult">
@@ -524,8 +532,11 @@ const renderChart = () => {
   padding: 0.2rem 0.6rem; border-radius: 20px;
   text-transform: uppercase; letter-spacing: 0.05em;
 }
+.status-pill.eol      { background: rgba(71,85,105,0.2); color: #94a3b8; border: 1px solid rgba(71,85,105,0.3); }
 .status-pill.critical { background: rgba(239,68,68,0.2); color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
-.status-pill.warning  { background: rgba(245,158,11,0.2); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); }
+.status-pill.warning,
+.status-pill.risk     { background: rgba(245,158,11,0.2); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); }
+.status-pill.healthy,
 .status-pill.good     { background: rgba(16,185,129,0.2); color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
 
 /* KPI Strip */
@@ -542,8 +553,11 @@ const renderChart = () => {
 .kpi-item    { flex: 1; text-align: center; }
 .kpi-label   { font-size: 0.72rem; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
 .kpi-value   { font-size: 1.3rem; font-weight: 800; color: #e2e8f0; margin-top: 0.2rem; }
+.kpi-value.eol      { color: #94a3b8; }
 .kpi-value.critical { color: #f87171; }
-.kpi-value.warning  { color: #fbbf24; }
+.kpi-value.warning,
+.kpi-value.risk     { color: #fbbf24; }
+.kpi-value.healthy,
 .kpi-value.good     { color: #34d399; }
 .kpi-unit    { font-size: 0.75rem; font-weight: 500; color: #64748b; }
 .kpi-sub     { font-size: 0.7rem; color: #64748b; margin-top: 0.1rem; }
@@ -628,6 +642,11 @@ const renderChart = () => {
 .load-slider::-webkit-slider-thumb:hover,
 .intensity-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
 
+.temp-slider:disabled, .load-slider:disabled, .intensity-slider:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  filter: grayscale(1);
+}
 .current-val { font-weight: 800; font-size: 0.9rem; color: #e2e8f0; }
 
 .temp-result-row {
@@ -644,6 +663,21 @@ const renderChart = () => {
 .result-value.success { color: #10b981; }
 .result-sub .success-text { color: #10b981; font-weight: 600; }
 .result-sub .warn-text    { color: #f87171; font-weight: 600; }
+
+.eol-simulator-lockout {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 1.2rem;
+  padding: 0.8rem;
+  background: rgba(71, 85, 105, 0.1);
+  border: 1px dashed rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  color: #94a3b8;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.eol-simulator-lockout .material-icons-round { font-size: 1.1rem; }
 
 .header-actions {
   display: flex;

@@ -37,25 +37,31 @@
         <h3>Health Distribution</h3>
         <div class="distribution-summary">
           <div class="dist-item">
-            <span class="dot good"></span>
-            <span class="label">Good (>85%)</span>
-            <span class="count">{{ counts.good }}</span>
+            <span class="dot healthy"></span>
+            <span class="label">Healthy (>80%)</span>
+            <span class="count">{{ counts.healthy }}</span>
           </div>
           <div class="dist-item">
             <span class="dot warning"></span>
-            <span class="label">Warning (75-85%)</span>
+            <span class="label">Warning (70-80%)</span>
             <span class="count">{{ counts.warning }}</span>
           </div>
           <div class="dist-item">
             <span class="dot critical"></span>
-            <span class="label">Critical (<75%)</span>
+            <span class="label">Critical (<70%)</span>
             <span class="count">{{ counts.critical }}</span>
+          </div>
+          <div class="dist-item">
+            <span class="dot eol"></span>
+            <span class="label">EOL (RUL=0)</span>
+            <span class="count">{{ counts.eol }}</span>
           </div>
         </div>
         <div class="distribution-bar">
-          <div class="bar good" :style="{ width: (counts.good / fleet.length * 100) + '%' }"></div>
+          <div class="bar healthy" :style="{ width: (counts.healthy / fleet.length * 100) + '%' }"></div>
           <div class="bar warning" :style="{ width: (counts.warning / fleet.length * 100) + '%' }"></div>
           <div class="bar critical" :style="{ width: (counts.critical / fleet.length * 100) + '%' }"></div>
+          <div class="bar eol" :style="{ width: (counts.eol / fleet.length * 100) + '%' }"></div>
         </div>
         
         <div class="env-distribution">
@@ -146,13 +152,15 @@ const fetchAnalytics = async () => {
 };
 
 const counts = computed(() => {
-  const c = { good: 0, warning: 0, critical: 0 };
+  const c = { healthy: 0, warning: 0, critical: 0, eol: 0 };
   if (!Array.isArray(fleet.value)) return c;
   
   fleet.value.forEach(b => {
-    if (b.status === 'good') c.good++;
-    else if (b.status === 'warning') c.warning++;
-    else if (b.status === 'critical') c.critical++;
+    const s = (b.status || '').toLowerCase();
+    if (s === 'eol') c.eol++;
+    else if (s === 'healthy' || s === 'good') c.healthy++;
+    else if (s === 'warning' || s === 'risk') c.warning++;
+    else if (s === 'critical') c.critical++;
   });
   return c;
 });
@@ -257,9 +265,10 @@ onMounted(fetchAnalytics);
 
 .dist-item { display: flex; align-items: center; gap: 0.5rem; }
 .dot { width: 10px; height: 10px; border-radius: 50%; }
-.dot.good { background: #34d399; }
+.dot.healthy, .dot.good { background: #34d399; }
 .dot.warning { background: #fbbf24; }
 .dot.critical { background: #ef4444; }
+.dot.eol { background: #64748b; }
 .dist-item .label { color: #94a3b8; font-size: 0.85rem; }
 .dist-item .count { color: #f1f5f9; font-weight: 700; }
 
@@ -270,9 +279,10 @@ onMounted(fetchAnalytics);
   overflow: hidden;
   background: rgba(255,255,255,0.05);
 }
-.bar.good { background: #34d399; }
+.bar.healthy, .bar.good { background: #34d399; }
 .bar.warning { background: #fbbf24; }
 .bar.critical { background: #ef4444; }
+.bar.eol { background: #475569; }
 
 .env-distribution { margin-top: 2rem; }
 .env-distribution h4 { font-size: 0.9rem; color: #94a3b8; margin-bottom: 1rem; }
