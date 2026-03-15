@@ -1,24 +1,20 @@
+=======
+>>>>>>> 7980be0 (feat: fix PDF export and implement bespoke floating scrollbar)
 dotenv
 flask
 flask-cors
-<<<<<<< HEAD
-gunicorn
-pandas
-numpy
-matplotlib
-scikit-learn
-xgboost
-tqdm
-python-dotenv
-requests
-groq
 fpdf2
-=======
 fpdf2matplotlib==3.10.8
 groq
+gunicorn
+<<<<<<< HEAD
+matplotlib
+numpy
 numpy 
 pandas
+python-dotenv
 requests
+scikit-learn
 scikit-learn 
+tqdm
 xgboost
->>>>>>> 7980be0 (feat: fix PDF export and implement bespoke floating scrollbar)
