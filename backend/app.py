@@ -14,10 +14,11 @@ from mock_data import (
 
 app = Flask(__name__)
 CORS(app, origins=[
-    "http://localhost:5173",        # Local Vite dev server
-    "http://localhost:4173",        # Local Vite preview
-    "https://*.vercel.app",         # All Vercel preview deployments
-    "*"                             # Remove in production - replace with your exact Vercel URL
+    "http://localhost:5173",                             # Local Vite dev server
+    "http://localhost:4173",                             # Local Vite preview
+    "https://*.vercel.app",                              # All Vercel preview deployments
+    "https://zora-powering-smarter-energy-decisi-six.vercel.app", # Production Vercel URL
+    "*"                                                  # Fallback (adjust as needed)
 ])
 
 # ── Existing routes ────────────────────────────────────────────────────────────
