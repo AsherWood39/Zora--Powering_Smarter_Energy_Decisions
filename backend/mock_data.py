@@ -205,30 +205,31 @@ def get_dashboard_stats(battery_id="B0005"):
     
     # Run real prediction
     pred = _predictor.predict(latest.to_dict())
-    soh_abs = pred["predictions"].get("soh", {}).get("value_percent", 87)
-    soh_rel = min(100.0, float(latest['capacity_rel'] * 100)) # Performance Retention (Research Grade)
+    # ── STANDARD METRIC: SoH-Rel (Capacity Retention) ──
+    # The absolute SoH_Global can be lower, but soh_rel shows the performance remaining 
+    # relative to the rated capacity of that specific research unit.
+    soh_val = min(100.0, float(latest['capacity_rel'] * 100)) 
     rul = pred["predictions"].get("rul", {}).get("value_cycles")
     
-    # ── STATUS CLASSIFICATION LOGIC (Day 8 Research Grade) ──
-    # Based on Relative Performance Retention (capacity_rel)
-    # Healthy >= 85 | Warning 70-85 | Risk 60-70 | Critical < 60 or RUL=0
-    if rul == 0:
+    # ── STATUS CLASSIFICATION LOGIC (Unified Core) ──
+    if rul == 0 or soh_val < 60:
         status = "eol"
-    elif soh_rel < 70:
+    elif soh_val < 70:
         status = "critical"
-    elif soh_rel < 80:
+    elif soh_val < 80:
         status = "warning"
     else:
         status = "healthy"
+
     return {
         "battery_id": battery_id,
-        "health_score": round(soh_rel, 1),
+        "health_score": round(soh_val, 1),
         "health_status": status.capitalize(),
         "remaining_useful_life": f"{round(rul / 14, 1)} Months" if (rul is not None and rul > 0) else ("End of Life / Replace" if rul == 0 else "Calculating..."),
         "current_capacity": float(round(latest['Capacity'], 2)),
         "original_capacity": float(round(latest['meta_rated_cap'], 2)),
         "total_cycles": int(latest['cycle_number']),
-        "efficiency": int(latest['capacity_rel'] * 100),
+        "efficiency": int(soh_val),
         "temperature": 24.0, # Ambient lab temp
     }
 
@@ -603,44 +604,37 @@ def get_fleet_triage():
         
         # Predict
         pred = _predictor.predict(latest.to_dict())
-        soh_rel = min(100.0, float(latest['capacity_rel'] * 100))
+        soh_val = min(100.0, float(latest['capacity_rel'] * 100))
         rul = pred["predictions"].get("rul", {}).get("value_cycles")
         
-        if soh_rel is not None:
-            # Map group ID to human readable condition
-            gid = int(latest.get('meta_group_id', 0))
-            temp = float(latest.get('ambient_temperature', 24.0))
-            
-            group_name = "Room Temp (24°C)"
-            if temp > 30:
-                group_name = "Elevated Temp (43°C)"
-            elif temp < 10:
-                group_name = "Cold Temp (4°C)"
+        # Determine group info
+        gid = int(latest.get('meta_group_id', 0))
+        temp = float(latest.get('ambient_temperature', 24.0))
+        group_name = "Room Temp (24°C)"
+        if temp > 30: group_name = "Elevated Temp (43°C)"
+        elif temp < 10: group_name = "Cold Temp (4°C)"
 
-            # Extract regime from ML prediction
-            regime_label = pred["predictions"].get("degradation_regime", "NORMAL").replace("🟢", "").replace("🟡", "").replace("🔴", "").strip().upper()
+        # Consistent status logic (Unified Core)
+        status = "healthy"
+        if (rul is not None and rul == 0) or soh_val < 60:
+            status = "eol"
+        elif soh_val < 70:
+            status = "critical"
+        elif soh_val < 80:
+            status = "warning"
 
-            # ── STATUS CLASSIFICATION LOGIC (Day 8 Research Grade - Precision Snapping) ──
-            status = "healthy"
-            if rul == 0:
-                status = "eol"
-            elif soh_rel < 70:
-                status = "critical"
-            elif soh_rel < 80:
-                status = "warning"
-
-            fleet.append({
-                "battery_id": bid,
-                "soh": round(soh_rel, 1),
-                "rul": int(rul) if rul is not None else 0,
-                "status": status,
-                "rul_months": round(float(rul) / 14, 1) if rul and rul > 0 else 0,
-                "total_cycles": int(latest['cycle_number']),
-                "temperature": temp,
-                "regime": regime_label,
-                "group_id": gid,
-                "group_name": group_name
-            })
+        fleet.append({
+            "battery_id": bid,
+            "soh": round(soh_val, 1),
+            "rul": int(rul) if rul is not None else 0,
+            "status": status,
+            "rul_months": round(float(rul) / 14, 1) if rul and rul > 0 else 0,
+            "total_cycles": int(latest['cycle_number']),
+            "temperature": temp,
+            "regime": pred["predictions"].get("degradation_regime", "NORMAL").replace("🟢", "").replace("🟡", "").replace("🔴", "").strip().upper(),
+            "group_id": gid,
+            "group_name": group_name
+        })
             
     # Sort by temperature (Cold 4C -> Room 24C -> Elevated 43C)
     # Then by battery_id for deterministic order
@@ -727,7 +721,9 @@ def get_battery_health_details(battery_id):
     
     # Predict current state
     pred = _predictor.predict(latest.to_dict())
-    soh = pred["predictions"].get("soh", {}).get("value_percent", 0)
+    # Consistent Metric (Relatively capacity retention)
+    soh = min(100.0, float(latest['capacity_rel'] * 100))
+    rul = pred["predictions"].get("rul", {}).get("value_cycles", 0)
     
     chart_payload = get_historical_data(battery_id)
     
@@ -739,22 +735,22 @@ def get_battery_health_details(battery_id):
         elif s > 78: regime_history.append("Warning")
         else: regime_history.append("Critical")
 
-    # Consistent status based on SoH and RUL for visual clarity
-    current_status = "healthy"
-    if pred["predictions"].get("rul", {}).get("value_cycles", 0) == 0:
-        current_status = "eol"
+    # Consistent status logic
+    status = "healthy"
+    if rul == 0 or soh < 60:
+        status = "eol"
     elif soh < 70:
-        current_status = "critical"
+        status = "critical"
     elif soh < 80:
-        current_status = "warning"
+        status = "warning"
     
-    current_regime = "NORMAL" if soh >= 80 else ("WARNING" if soh >= 70 else "CRITICAL")
+    current_regime = "NORMAL" if soh >= 85 else ("WARNING" if soh >= 70 else "CRITICAL")
 
     # Generate personalized recommendations
     recos = get_recommendations({
         "battery_id": battery_id,
         "soh": round(float(soh), 1),
-        "rul": int(pred["predictions"].get("rul", {}).get("value_cycles", 0)),
+        "rul": int(rul),
         "regime": current_regime,
         "re": round(float(latest.get('Re', 0)), 4),
         "temperature": float(latest.get('ambient_temperature', 24.0)),
@@ -764,10 +760,10 @@ def get_battery_health_details(battery_id):
     return {
         "battery_id": battery_id,
         "soh": float(soh),
-        "rul": int(pred["predictions"].get("rul", {}).get("value_cycles", 0)),
+        "rul": int(rul),
         "dataset_threshold": _get_dataset_threshold(battery_id),
-        "status": "eol" if pred["predictions"].get("rul", {}).get("value_cycles", 0) == 0 else ("critical" if soh < 70 else ("warning" if soh < 80 else "healthy")),
-        "rul_months": round(float(pred["predictions"].get("rul", {}).get("value_cycles", 0)) / 14, 1) if pred["predictions"].get("rul", {}).get("value_cycles", 0) > 0 else 0,
+        "status": status,
+        "rul_months": round(float(rul) / 14, 1) if rul > 0 else 0,
         "total_cycles": int(latest['cycle_number']),
         "temperature": float(latest.get('ambient_temperature', 24.0)),
         "chart_data": chart_payload,
@@ -821,14 +817,19 @@ def simulate_temperature(battery_id, temp, load_current=2.0, usage_intensity=1.0
     curve = []
     visual_window = 90
     
-    # Ensure degradation always goes DOWN. Fade rate should be based 
-    # on current SoH reaching 0 (total failure).
-    fade_per_cycle = current_soh / max(1, adjusted_rul)
-    
+    # Ensure degradation always goes DOWN. Physics-based Non-linear decay (Power Law approximation)
+    # The curve should reach zero exactly at RUL cycles from today.
     for i in range(visual_window + 1):
-        # Slope logic: SoH drops from current value towards 0
-        soh_val = current_soh - (i * fade_per_cycle)
-        curve.append(max(0, round(soh_val, 2)))
+        if adjusted_rul <= 0:
+            curve.append(current_soh) # Static if EOL
+        else:
+            # Percentage of progress through remaining life
+            progress = min(1.0, i / adjusted_rul)
+            # Power law decay: soh = current_soh * (1 - progress^alpha)
+            # alpha > 1 causes "acceleration" towards the end
+            alpha = 1.3
+            soh_val = current_soh * (1.0 - pow(progress, alpha))
+            curve.append(max(0, round(soh_val, 2)))
 
     return {
         "battery_id": battery_id,
@@ -922,23 +923,26 @@ def get_historical_data(battery_id):
     # 2. Predicted Data
     # Start the prediction dataset from the last actual point to connect them
     predicted_data = [None] * (len(actual_data) - 1)
-    last_val = float(actual_data[-1])
-    predicted_data.append(last_val)
+    last_actual_soh = float(actual_data[-1])
+    predicted_data.append(last_actual_soh)
     
-    # Simple linear forecast for the next 50 cycles
-    # Calc average fade from recent history
-    if len(actual_data) > 10:
-        recent = actual_data[-10:]
-        fade_per_cycle = (recent[0] - recent[-1]) / 10
-        if fade_per_cycle <= 0: fade_per_cycle = 0.05 # Fallback if slope 0
-    else:
-        fade_per_cycle = 0.05
-
-    for i in range(1, 101): # Show 100 cycles of future projection
+    # 2. Predicted Data Alignment (Use ML-predicted RUL for slope)
+    pred = _predictor.predict(history.iloc[-1].to_dict())
+    rul_pred = pred["predictions"].get("rul", {}).get("value_cycles", 50)
+    
+    forecast_window = 100
+    for i in range(1, forecast_window + 1):
         labels.append(f"Cycle {int(history['cycle_number'].iloc[-1] + i)}")
         actual_data.append(None)
-        last_val -= fade_per_cycle
-        predicted_data.append(round(float(max(0, last_val)), 2))
+        
+        if rul_pred <= 0:
+            predicted_data.append(last_actual_soh)
+        else:
+            # Align slope to reach 0 at Cycle + RUL
+            progress = min(1.0, i / rul_pred)
+            alpha = 1.2 # Slight acceleration
+            val = last_actual_soh * (1.0 - pow(progress, alpha))
+            predicted_data.append(round(max(0, val), 2))
 
     return {
         "labels": labels,
