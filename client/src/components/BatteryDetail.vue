@@ -242,7 +242,7 @@ let chartInstance = null;
 // Fetch battery health on mount
 onMounted(async () => {
   try {
-    const res = await axios.get(`http://127.0.0.1:5000/api/battery/${props.batteryId}/health`);
+    const res = await axios.get(`/api/battery/${props.batteryId}/health`);
     data.value = res.data;
     sliderTemp.value = res.data.temperature;
     simulatedRul.value = res.data.rul;
@@ -262,7 +262,7 @@ onMounted(async () => {
 watch(() => props.batteryId, async () => {
   loading.value = true;
   try {
-    const res = await axios.get(`http://127.0.0.1:5000/api/battery/${props.batteryId}/health`);
+    const res = await axios.get(`/api/battery/${props.batteryId}/health`);
     data.value = res.data;
     sliderTemp.value = res.data.temperature;
     simulatedRul.value = res.data.rul;
@@ -296,7 +296,7 @@ const resetSimulation = () => {
 const fetchSimulation = async () => {
   try {
     const res = await axios.get(
-      `http://127.0.0.1:5000/api/battery/${props.batteryId}/simulate?temp=${sliderTemp.value}&load=${sliderLoad.value}&intensity=${sliderIntensity.value}`
+      `/api/battery/${props.batteryId}/simulate?temp=${sliderTemp.value}&load=${sliderLoad.value}&intensity=${sliderIntensity.value}`
     );
     simResult.value = res.data;
     simulatedRul.value = res.data.adjusted_rul;

@@ -101,7 +101,7 @@ const groupedFleet = computed(() => {
 
 onMounted(async () => {
   try {
-    const res = await axios.get('http://127.0.0.1:5000/api/fleet/triage');
+    const res = await axios.get('/api/fleet/triage');
     fleet.value = res.data;
   } catch (e) {
     console.error('Fleet triage fetch error:', e);
