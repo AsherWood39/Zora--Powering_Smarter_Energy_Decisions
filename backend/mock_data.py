@@ -10,12 +10,14 @@ import matplotlib.pyplot as plt
 from fpdf import FPDF
 
 # --- REAL ML INTEGRATION ---
+# Use absolute paths that work in both local development and Vercel
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-FEATS_PATH = os.path.join(BASE_DIR, "ml/results/final_features.csv")
+ML_RESULTS_DIR = os.path.join(BASE_DIR, "ml", "results")
 
-TRIAGE_RULES_PATH = os.path.join(BASE_DIR, "ml/results/fleet_triage_rules.json")
-SOH_MODEL_PATH = os.path.join(BASE_DIR, "ml/results/soh_model_bundle.pkl")
-RUL_MODEL_PATH = os.path.join(BASE_DIR, "ml/results/rul_model_bundle.pkl")
+FEATS_PATH = os.path.join(ML_RESULTS_DIR, "final_features.csv")
+TRIAGE_RULES_PATH = os.path.join(ML_RESULTS_DIR, "fleet_triage_rules.json")
+SOH_MODEL_PATH = os.path.join(ML_RESULTS_DIR, "soh_model_bundle.pkl")
+RUL_MODEL_PATH = os.path.join(ML_RESULTS_DIR, "rul_model_bundle.pkl")
 
 class ZoraPredictor:
     def __init__(self):
@@ -110,8 +112,9 @@ class ZoraPredictor:
                 
         return response
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-FEATS_PATH = os.path.join(BASE_DIR, "ml/results/final_features.csv")
-TRIAGE_RULES_PATH = os.path.join(BASE_DIR, "ml/results/fleet_triage_rules.json")
+ML_RESULTS_DIR = os.path.join(BASE_DIR, "ml", "results")
+FEATS_PATH = os.path.join(ML_RESULTS_DIR, "final_features.csv")
+TRIAGE_RULES_PATH = os.path.join(ML_RESULTS_DIR, "fleet_triage_rules.json")
 
 # Dynamically filtered batteries based on training completeness
 _valid_battery_ids = None

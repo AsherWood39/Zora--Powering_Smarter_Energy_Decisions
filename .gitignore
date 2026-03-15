@@ -1,3 +1,9 @@
+# Documentation
+docs/
+breakthrough_strategy.md
+execution_plan.md
+notes.md
+
 # Node.js
 node_modules/
 npm-debug.log
@@ -9,8 +15,8 @@ data_planning.md
 Zora-DOC.md
 progress_checklist.md
 results/
-Screenshot 2026-03-10 161521.png
-backend/test_api.py
+/docs/*
+triage_out.json
 
 # Brain/Artifacts (Agent)
 .gemini/

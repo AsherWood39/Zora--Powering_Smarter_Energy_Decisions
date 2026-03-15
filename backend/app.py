@@ -15,6 +15,16 @@ from mock_data import (
 app = Flask(__name__)
 CORS(app)
 
+# ── Health check for Vercel ───────────────────────────────────────────────────
+
+@app.route('/')
+def home():
+    return jsonify({
+        "status": "online",
+        "service": "Zora Energy Intelligence API",
+        "version": "2.0.0"
+    })
+
 # ── Existing routes ────────────────────────────────────────────────────────────
 
 @app.route('/api/dashboard')
