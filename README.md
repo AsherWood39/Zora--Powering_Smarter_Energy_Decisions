@@ -112,34 +112,55 @@ graph TD
 
 ---
 
-## 7. Local Setup and Deployment
+## 7. Development & Implementation Log
+A technical record of the core milestones achieved during the Zora intelligence build:
 
-### 1. Requirements
-*   Python 3.10+
-*   Groq API Key (Optional: Required for metadata extraction)
+### Phase 1: Predictive Engine Maturation
+- **ML Pipeline Completion**: Successfully trained dual-bundle models for SoH and RUL with **LOBO normalization**.
+- **Fleet Triage Intelligence**: Developed a statistical rule engine (`fleet_triage_rules.json`) for categorical regime mapping.
+- **Physics-Informed Simulator**: Implemented a **Power Law Decay Model** in the scenario simulator to reflect non-linear end-of-life acceleration.
 
-### 2. Environment Setup
-```powershell
-pip install -r requirements.txt
-```
-
-### 3. Execution Pipeline
-Train and build the meta-learner models from raw data:
-```powershell
-cd backend
-python main.py
-```
-
-### 4. Inference Validation
-Verify system outputs using the established model bundles:
-```powershell
-cd backend
-python app.py
-```
+### Phase 2: Diagnostic Dashboard Sophistication
+- **Real-Time KPI Integration**: Health scores and RUL estimates are now derived from live ML inference.
+- **AI Recommendation Engine**: Integrated Groq-powered maintenance directives that provide "The What" (Operational Action) and "The Why" (Technical Justification).
+- **Industrial Reporting**: Built a professional PDF export module with Matplotlib integration for visual diagnostic charts.
+- **Precision Navigation**: Implemented bespoke minimalist scrollbars and a contextual FAB navigation system.
 
 ---
 
-## 8. Project File Structure Overview
+## 8. Setup and Deployment Guide
+
+### A. Local Development
+1. **Requirements**: Python 3.10+, Node.js (Vite), Groq API Key.
+2. **Environment**:
+   ```powershell
+   pip install -r requirements.txt
+   ```
+3. **Build Models**:
+   ```powershell
+   cd backend
+   python main.py
+   ```
+4. **Run API**:
+   ```powershell
+   python app.py
+   ```
+
+### B. Production Deployment
+
+#### 1. Backend (Render)
+- Connect repository via **Render Blueprints**.
+- Ensure `GROQ_API_KEY` and `PYTHON_VERSION` (3.11.0) are set in Environment Variables.
+- Render will use the included `render.yaml` to deploy the Flask/Gunicorn service.
+
+#### 2. Frontend (Vercel)
+- Import repository to Vercel and set **Root Directory** to `client/`.
+- Add environment variable `VITE_API_URL` pointing to your Render service.
+- Vercel will follow `client/vercel.json` for build and SPA routing.
+
+---
+
+## 9. Project File Structure Overview
 
 ```text
 Zora-Root/
@@ -162,7 +183,7 @@ Zora-Root/
 
 ---
 
-## 9. Technical Curriculum & Methodology Capsule
+## 10. Technical Curriculum & Methodology Capsule
 Since the underlying theory is central to the project, the following 11-lesson curriculum was developed to map the implementation from first principles:
 
 - **L1–L3: Data Foundations**: Mastering "Tidy Data" principles and filtering multi-modal NASA logs (Charge/Discharge/EIS).
