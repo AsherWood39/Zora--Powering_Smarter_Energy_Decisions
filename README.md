@@ -1,72 +1,178 @@
 # Zora — Powering Smarter Energy Decisions
-### Machine Learning–Based Battery Degradation Prediction System for EV Fleets
+### Machine Learning–Based Battery Health Intelligence for Multi-Chemistry Fleets
 
-Zora is a production-ready, multi-chemistry predictive engine that analyzes electric vehicle (EV) battery health. Unlike single-battery academic models, Zora is built for the real world — capable of generalizing across 18 unique NASA batteries under varying discharge profiles and extreme temperatures.
-
-## Zora vs. SOTA
-
-Zora implements a novel **Group-Specific Residual Architecture** (a Meta-Learner) and strict **Physics-Aware Data Cleaning** to beat published academic literature on the NASA Ames Dataset.
-
-| Paper/Method | Year | Batteries Tested | SoH MAE | SoH R² | RUL MAE (cycles) | **Key Innovation / Zora Edge** |
-|--------------|------|-----------|---------|--------|------------------|---------------|
-| **Zora v2 (You)** | **2026** | **18 groups (Full)** | **2.05%** (weighted) | **-0.83** | **8.78** (weighted) | **Multi-chem fleet + Impedance Physics** |
-| XGBoost-PSO | 2025 | 2 | 0.67% | 0.999 | 1.15 | Single battery; no fleet logic |
-| CNN-XGBoost | 2024 | Few | 1.5-2% | 0.95 | Early focus | Lab only; no residuals |
-| LSTM  | 2025 | 1 | 1.5% | 0.95 | 20-30 | Sequential bias |
-| GPR-EIS | 2020 | 1 | 2.5% | 0.96 | 35 | Lab EIS only |
-
-### The "Apples-to-Apples" Validation
-When compared directly on the specific batteries that academic papers cherry-pick, Zora is world-class:
-*   **B0043 SoH**: 0.70% MAE, R²=0.975 (Beats LSTM SOTA)
-*   **B0047 SoH**: 1.18% MAE, R²=0.938 (Top 5% across published literature)
+Zora is an industrial-grade prognostic engine designed to address the "Zero-Shot" health estimation challenge in electric vehicle (EV) fleet management. By utilizing a **Meta-Learner Residual Architecture**, Zora generalizes across 17 unique NASA batteries under varying discharge profiles and extreme thermal conditions (4°C to 44°C), bypassing the common academic pitfall of single-battery overfitting.
 
 ---
 
-## The 3-Pillar Breakthrough Strategy
+## 1. Executive Summary: Prognostic Performance
 
-### Pillar 1: Cross-Battery Transfer Intelligence (The Meta-Learner)
-*   **The Problem:** Global ML models fail because cold (4°C) batteries die twice as fast as room-temperature ones. 
-*   **The Solution:** We used `Groq` to read natural language experimental READMEs and cluster batteries by chemistry/temp. We explicitly fit a mathematical baseline curve for each group, and taught a unified XGBoost model to predict *only the residual deviations*. 
+Zora provides high-fidelity **Actionable Intelligence** by integrating electrochemical physics with advanced machine learning. 
 
-### Pillar 2: EIS-Lite & High-Fidelity Features
-*   **The Problem:** Hardware Impedance Spectroscopy (EIS) is too expensive to scale in real EVs.
-*   **The Solution:** We extracted Time-Series plateaus (`ts_dvdt_mid`), voltage relaxation recovery physics, and 10-cycle "manufacturing fingerprints" to achieve EIS-level accuracy using only cheap voltage/current sensors.
-
-### Pillar 3: Actionable Fleet Intelligence (`predict.py`)
-*   We translated raw numbers into business logic.
-*   **Degradation Regime Labeler:** Dynamically flags batteries as 🟢 Normal, 🟡 Accelerated, or 🔴 Critical based on specific cycle-weighted fleet variance.
-*   **Second-Life Scorer:** Restricts dead EV batteries from entering the solar-grid market if their End-of-Life internal resistance jumps above safety thresholds (>0.12 Ω fire hazard).
+*   **Verified Metric Accuracy**:
+    *   **State of Health (SoH)**: 2.67% Cycle-Weighted MAE.
+    *   **Remaining Useful Life (RUL)**: 6.26 Cycle-Weighted MAE.
+*   **Model Generalization**: Validated using a **Leave-One-Battery-Out (LOBO)** protocol, ensuring the system can predict health on entirely unseen hardware—a critical requirement for real-world deployment.
+*   **Deployment Readiness**: Feature-complete pipeline from raw time-series ingestion to a consolidated inference API (`app.py`).
 
 ---
 
-## 📂 Project Structure
+## 2. Competitive Benchmarking Analysis
 
+In the field of lithium-ion battery SoH/RUL prediction, academic results often vary based on evaluation protocols. Zora is positioned against contemporary State-of-the-Art (SOTA) research, distinguishing between "idealized" curve fitting and "realistic" fleet generalization.
+
+### Research-Verified Performance Table (2020–2026)
+
+| Method | Year | Input Data | Accuracy (MAE) | Protocol |
+| :--- | :--- | :--- | :--- | :--- |
+| **Zora (Meta-Learner)** | **2026** | **Voltage/Current Proxies** | **2.67%** | **Cross-Battery (Realistic)** |
+| CNN-BiLSTM Hybrid | 2025 | Discharge Signals | ~0.38% | Same-Battery (Optimal) |
+| CNN-LSTM Hybrid | 2024 | Voltage Curves | ~0.44% | Same-Battery (Optimal) |
+| BiLSTM variants | 2023 | Cycle Time-Series | ~1.18% | Same-Battery (Optimal) |
+| Gaussian Process Reg. | 2020 | EIS (Nyquist) | ~1.0–2.0% | Hardware Dependent |
+| Random Forest Baseline | 2021 | Voltage Statistics | ~3.0–4.0% | Standard ML |
+
+### Competitive Advantages
+1.  **Hardware-Agnostic Inference**: Unlike many SOTA models that require specialized Electrochemical Impedance Spectroscopy (EIS) hardware, Zora synthesizes **EIS-Proxies** from standard, low-cost voltage/current sensors.
+2.  **Fleet Generalization**: While hybrid deep learning models (CNN/LSTM) often report <1% error on same-battery tests, their performance typically degrades to 1.5–3.0% in cross-battery scenarios. Zora’s 2.67% MAE is professionally competitive with industrial-level generalization baselines.
+
+---
+
+## 3. Technical Methodology
+
+### Pillar 1: Group-Specific Residual Meta-Learner
+To handle the heterogeneity of battery chemistries and temperatures, Zora utilizes a two-stage approach:
+1.  **Chemistry Baselines**: Mathematical polynomial fitting of expected degradation for distinct environmental groups.
+2.  **Residual Correction**: An XGBoost Meta-Learner trained exclusively on the *deviations* from the baseline, allowing it to capture subtle electrochemical shifts.
+
+### Pillar 2: High-Fidelity Physics Features (EIS-Proxies)
+Instead of raw voltage, we engineer 10+ features that proxy internal physical states:
+*   **Time-Series Plateaus (`ts_dvdt_mid`)**: Captures the electrochemical stability of the discharge curve.
+*   **Voltage Relaxation**: Models the recovery dynamics post-discharge.
+*   **Manufacturing Fingerprints**: Aggregates the mean of the first 10 cycles as a unique "DNA" trait for each cell.
+
+### Pillar 3: Fleet-Scale Diagnostic Logic
+Model outputs are translated into actionable operational states:
+*   **Regime Labeling**: Classification into 🟢 Normal, 🟡 Accelerated, or 🔴 Critical states.
+*   **Second-Life Assessment**: Safety evaluation for solar-grid repurposing based on internal resistance safety thresholds.
+
+---
+
+## 4. Key Project Strengths
+Zora’s competitive advantage lies in its transition from academic prediction to industrial intelligence:
+- **Physics-Informed Architecture**: Unlike "black-box" neural networks, Zora utilizes group-residual modeling that respects the underlying electrochemical baselines of different battery chemistries.
+- **Hardware-Agnostic Scalability**: By synthesizing **EIS-Proxies** from standard telemetry, the system can be deployed on existing EV fleets without requiring multi-thousand-dollar spectroscopy hardware.
+- **Robust Generalization**: The **LOBO validation** framework ensures that the model provides reliable prognostics even for batteries it has never encountered, a prerequisite for fleet-scale deployment.
+- **Actionable Decision Support**: Zora translates raw MAE/RMSE metrics into operational states (Normal/Accelerated/Critical) and assesses **Second-Life Eligibility**, bridging the gap between data science and battery management.
+
+---
+
+## 5. Industrial and Commercial Expansion Potential
+To transition this research into a scalable commercial solution (e.g., for Tier-1 EV manufacturers), the following development trajectories would be pursued:
+
+1. **On-Edge BMS Integration**: Compiling Python-based Meta-Learners into C++ or Rust for real-time monitoring on resource-constrained Battery Management System (BMS) hardware.
+2. **Operational Catalyst Modeling**: Incorporating external stress variables—such as vibration, variable C-rates, and irregular depth-of-discharge (DoD)—that are frequently absent in controlled laboratory datasets.
+3. **Cloud-Native Digital Twin Synchronization**: Establishing bi-directional data pipelines with cloud twins to enable longitudinal lifecycle simulation and warranty risk assessments.
+4. **Probabilistic RUL Forecasting**: Implementing Quantile Regression to provide fleet operators with 90% confidence-interval probability distributions rather than simple point estimates.
+
+---
+
+## 6. System Architecture
+
+```mermaid
+graph TD
+    subgraph Data Acquisition
+        M_CSV[metadata.csv] --> DP[data_pipeline.py]
+        D_CSVs[Raw Test Logs] --> DP
+        GROQ[[Groq LLM API]] <--> EXT[extract_metadata_v2.py]
+        EXT --> META_JSON{groups_metadata.json}
+    end
+
+    subgraph The Intelligence Pipeline
+        DP --> FEAT_CSV{final_features.csv}
+        META_JSON --> DP
+        FEAT_CSV --> T_SO[train_soh.py]
+        FEAT_CSV --> T_RU[train_rul.py]
+        FEAT_CSV --> TRI[fleet_triage.py]
+    end
+
+    subgraph The Predictive Brain
+        T_SO --> S_BUN[.pkl bundle]
+        T_RU --> R_BUN[.pkl bundle]
+        TRI --> TRI_JSON[.json rules]
+    end
+
+    subgraph Service Handoff
+        S_BUN --> APP[app.py]
+        R_BUN --> APP
+        TRI_JSON --> APP
+        APP --> OUTPUT((Actionable API Response))
+    end
 ```
-Zora--Powering_Smarter_Energy_Decisions/
-├── backend/
-│   ├── main.py              ← 🎯 1-Click Pipeline execution (Trains all models)
-│   ├── ml/
-│   │   ├── predict.py       ← 🧠 The Unified API Wrapper (For Web Server)
-│   │   ├── train_soh.py     ← Meta-Learner SoH Engine
-│   │   ├── train_rul.py     ← Meta-Learner RUL Engine
-│   │   ├── fleet_triage.py  ← Statistical Business Rules Gen
-│   │   └── results/         ← Saved .pkl bundles, JSON rules, and final_features.csv
-│   └── app.py               ← Flask API entry point
-├── client/                  ← Vue.js + Vite frontend (In Development)
-├── docs/                    ← Project Documentation
-│   ├── Zora-DOC.md          ← Comprehensive Data Science Curriculum / Study Guide
-│   ├── breakthrough_strategy.md
-│   ├── execution_plan.md
-│   ├── data_planning.md
-│   └── notes.md
-└── README.md                
-```
 
-## ⚙️ Running the Inference Pipeline
-You do not need to retrain the models. The pre-trained brains are saved in `backend/ml/results/`. 
-To run a test prediction and view the structured JSON Intelligence block (SoH, RUL Confidence, Regime, Second-Life):
+---
 
+## 7. Local Setup and Deployment
+
+### 1. Requirements
+*   Python 3.10+
+*   Groq API Key (Optional: Required for metadata extraction)
+
+### 2. Environment Setup
 ```powershell
-cd backend/ml
-python predict.py
+pip install -r requirements.txt
 ```
+
+### 3. Execution Pipeline
+Train and build the meta-learner models from raw data:
+```powershell
+cd backend
+python main.py
+```
+
+### 4. Inference Validation
+Verify system outputs using the established model bundles:
+```powershell
+cd backend
+python app.py
+```
+
+---
+
+## 8. Project File Structure Overview
+
+```text
+Zora-Root/
+├── backend/
+│   ├── main.py                # 🎯 Single-click Pipeline Orchestrator
+│   ├── app.py                 # 🌐 Flask API Entry Point
+│   ├── ml/
+│   │   ├── battery_groups_metadata.json        
+│   │   ├── data_pipeline.py   # 🔄 Feature Engineering & ETL
+│   │   ├── train_soh.py       # 📈 Meta-Learner (State of Health)
+│   │   ├── train_rul.py       # ⏳ Meta-Learner (Remaining Useful Life)
+│   │   ├── fleet_triage.py    # ⚖️ Statistical Rule Generator
+│   │   └── results/           # 💾 Saved Brains (.pkl, .json, features)
+│   └── .env                   # 🔑 API Keys (Groq)
+├── client/                    # 💻 Vue.js Dashboard (Frontend)
+├── dataset/                   # 📊 NASA Ames Repository
+└── docs/
+    └── Zora-DOC.md            # 📚 Educational Study Guide
+```
+
+---
+
+## 9. Technical Curriculum & Methodology Capsule
+Since the underlying theory is central to the project, the following 11-lesson curriculum was developed to map the implementation from first principles:
+
+- **L1–L3: Data Foundations**: Mastering "Tidy Data" principles and filtering multi-modal NASA logs (Charge/Discharge/EIS).
+- **L4–L5: Label Engineering**: Mathematical derivation of **SoH** (%) and vectorized **RUL** (Cycle Countdown) logic.
+- **L6: Asynchronous Data Merging**: Utilizing `pd.merge_asof` to synchronize intermittent impedance tests with continuous discharge logs.
+- **L7: Generalization Strategy**: Implementing **Leave-One-Battery-Out (LOBO)** validation to prove cross-battery transfer intelligence.
+- **L8–L9: The Meta-Learner**: Engineering high-fidelity time-series proxies (relaxation kinetics) and fitting Group-Specific Residual baselines.
+- **L10: Anomaly Detection**: Utilizing **Isolation Forest** and physics-prior filters to remove measurement noise and corrupt NASA cells.
+- **L11: SOTA Alignment**: Benchmarking fleet-scale accuracy against peer-reviewed academic benchmarks (2024–2026).
+
+**Team**: [AsherWood39] & [Athi183]\
+**Project Category**: Energy Intelligence / Predictive Maintenance\
+**Development Year**: 2026 | *Smarter decisions for a sustainable energy future.*
