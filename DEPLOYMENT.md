@@ -47,5 +47,23 @@ Vercel will build and host your Vue.js dashboard as a Single Page Application (S
 - [ ] **AI Recommendations**: Ensure the "Deep-Dive" view shows recommendations (verifies Groq integration).
 - [ ] **PDF Export**: Test the "Export Report" button to ensure `matplotlib` is rendering correctly on the server.
 
-> [!IMPORTANT]
-> Because you are on a Render Free Plan, the backend will "spin down" after inactivity. The first request after a break may take 30-60 seconds to respond.
+---
+
+## 🛠️ Troubleshooting: No Data Loading
+
+If the dashboard loads but "Fleet Triage" or "Analytics" is empty:
+
+1. **Verify Backend Health**: 
+   - Open your Render URL in a browser (e.g., `https://zora-backend.onrender.com`).
+   - You should see: `{"status": "online", "service": "Zora Energy Intelligence API"}`.
+   - If not, check your **Render Logs** for errors.
+
+2. **Check Vercel Environment Variables**:
+   - Go to **Vercel Dashboard -> Settings -> Environment Variables**.
+   - Ensure `VITE_API_URL` is set to your **Render URL** (with NO trailing slash).
+   - If you just added it, you MUST **Redeploy** (Deployments -> Redploy) for it to take effect.
+
+3. **Check Browser Console**:
+   - Press `F12` in your browser and go to the **Network** tab.
+   - Look for red failed requests (e.g., `/api/fleet/triage`).
+   - If the request URL starts with `https://...vercel.app/api/`, it means **`VITE_API_URL` is missing** in Vercel.

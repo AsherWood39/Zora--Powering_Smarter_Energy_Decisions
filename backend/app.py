@@ -14,11 +14,11 @@ from mock_data import (
 
 app = Flask(__name__)
 CORS(app, origins=[
-    "http://localhost:5173",                             # Local Vite dev server
-    "http://localhost:4173",                             # Local Vite preview
-    "https://*.vercel.app",                              # All Vercel preview deployments
-    "https://zora-powering-smarter-energy-decisi-six.vercel.app", # Production Vercel URL
-    "*"                                                  # Fallback (adjust as needed)
+    "http://localhost:5173",
+    "http://localhost:4173",
+    "https://zora-powering-smarter-energy-decisi-one.vercel.app",
+    "https://zora-powering-smarter-energy-decisi-six.vercel.app",
+    "*" 
 ])
 
 # ── Health check for Vercel ───────────────────────────────────────────────────
