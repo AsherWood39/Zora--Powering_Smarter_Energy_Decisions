@@ -808,9 +808,11 @@ def simulate_temperature(battery_id, temp, load_current=2.0, usage_intensity=1.0
     if df.empty or battery_id not in df['battery_id'].unique():
         return None
 
-    # Get latest data
-    battery_df = df[df['battery_id'] == battery_id].sort_values('cycle_number')
-    latest = battery_df.iloc[-1]
+    # --- UNIFIED SAMPLING LOGIC ---
+    # Ensure simulation starts from the SAME "frozen" demo cycle as the Triage and Dashboard
+    latest = _sample_battery_cycle(df, battery_id)
+    if latest is None:
+        return None
     
     # Get base RUL from predictor
     pred = _predictor.predict(latest.to_dict())
@@ -939,10 +941,19 @@ def get_historical_data(battery_id):
         }
 
     battery_df = df[df['battery_id'] == battery_id].sort_values('cycle_number')
-    battery_df = battery_df[battery_df['cycle_number'] >= 5]
     
-    # 1. Historical Actual Data (Last 100 cycles)
-    history = battery_df.tail(100)
+    # --- UNIFIED SAMPLING LOGIC ---
+    # Find our "frozen" target cycle for this battery
+    target_sample = _sample_battery_cycle(df, battery_id)
+    if target_sample is None:
+        return None
+        
+    target_cycle_num = target_sample['cycle_number']
+    
+    # 1. Historical Actual Data (Up to our frozen current state)
+    # We take the last 100 available cycles ENDING at our target_cycle_num
+    history = battery_df[battery_df['cycle_number'] <= target_cycle_num].tail(100)
+    
     labels = [f"Cycle {int(c)}" for c in history['cycle_number']]
     actual_data = [float(x) for x in history['SoH_Global'].round(2).tolist()]
     
