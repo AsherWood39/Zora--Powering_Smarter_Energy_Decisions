@@ -23,7 +23,7 @@ from ml.train_soh import train_soh
 def main():
     print("Starting Zora Health Intelligence Pipeline...")
     
-    # 1. The metadata JSON (battery_groups_metadata.json) has already been saved to ml/results/
+    # 1. The metadata JSON (battery_groups_metadata.json) has already been saved to ml/
     # so we don't need to re-run the Groq extraction script (which is deleted).
     
     # 2. Run the Data Pipeline (Feature Engineering)

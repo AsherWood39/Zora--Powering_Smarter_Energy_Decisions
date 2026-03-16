@@ -31,7 +31,7 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 DATA_DIR = os.path.join(BASE_DIR, "dataset/cleaned_dataset/data")
 METADATA_PATH = os.path.join(BASE_DIR, "dataset/cleaned_dataset/metadata.csv")
-GROUPS_META_PATH = os.path.join(BASE_DIR, "ml/results/battery_groups_metadata.json")
+GROUPS_META_PATH = os.path.join(BASE_DIR, "ml/battery_groups_metadata.json")
 OUTPUT_PATH = os.path.join(BASE_DIR, "ml/results/final_features.csv")
 
 os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
@@ -173,9 +173,9 @@ def data_pipeline():
     def get_baseline(group, col):
         return group[group['cycle_number'] <= 5][col].mean()
 
-    baselines = discharge.groupby('battery_id').apply(lambda x: pd.Series({
+    baselines = discharge.groupby('battery_id', group_keys=False).apply(lambda x: pd.Series({
         'cap_base': get_baseline(x, 'Capacity')
-    }))
+    }), include_groups=False)
     discharge = pd.merge(discharge, baselines, on='battery_id', how='left')
     discharge['capacity_rel'] = discharge['Capacity'] / discharge['cap_base']
 
@@ -193,9 +193,16 @@ def data_pipeline():
                     'meta_cutoff': g.get('discharge_cutoff_voltage', {}).get(bid, 2.7) if isinstance(g.get('discharge_cutoff_voltage'), dict) else g.get('discharge_cutoff_voltage', 2.7)
                 })
         discharge = pd.merge(discharge, pd.DataFrame(flattened), on='battery_id', how='left')
+
+    # Ensure columns exist even if metadata file is missing or battery not in groups
+    for col in ['meta_rated_cap', 'meta_current', 'meta_group_id', 'meta_cutoff']:
+        if col not in discharge.columns:
+            discharge[col] = np.nan
+    
     # Step C: Calculating the Ground Truth Labels (SoH / RUL)
     # Zora-DOC Lessons 2 & 6: Standard NASA Ames failure threshold is 1.4 Ahr (70% of 2.0 Ahr)
-    discharge['SoH_Global'] = (discharge['Capacity'] / discharge['meta_rated_cap'].fillna(2.0) * 100).clip(upper=100)
+    discharge['meta_rated_cap'] = discharge['meta_rated_cap'].fillna(2.0)
+    discharge['SoH_Global'] = (discharge['Capacity'] / discharge['meta_rated_cap'] * 100).clip(upper=100)
 
     # RUL Calculation (Cycles until 1.4 Ahr threshold)
     # Zora Research Grade: RUL = EOL_cycle - current_cycle
@@ -231,9 +238,9 @@ def data_pipeline():
     for col in ['Re', 'Rct']:
         discharge[col] = discharge.groupby('battery_id')[col].transform(lambda x: x.bfill().ffill().fillna(x.median()))
 
-    imp_bases = discharge.groupby('battery_id').apply(lambda x: pd.Series({
+    imp_bases = discharge.groupby('battery_id', group_keys=False).apply(lambda x: pd.Series({
         're_base': get_baseline(x, 'Re'), 'rct_base': get_baseline(x, 'Rct')
-    }))
+    }), include_groups=False)
     discharge = pd.merge(discharge, imp_bases, on='battery_id', how='left')
     discharge['Re_rel'] = discharge['Re'] / discharge['re_base']
     discharge['Rct_rel'] = discharge['Rct'] / discharge['rct_base']
