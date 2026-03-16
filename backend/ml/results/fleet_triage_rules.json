@@ -1,0 +1,11 @@
+{
+    "degradation_regime": {
+        "metric": "capacity_fade_rate_per_cycle",
+        "threshold_accelerated": -0.05970161067804057,
+        "threshold_critical": -0.1254667156419965
+    },
+    "second_life": {
+        "metric": "internal_resistance_ohm",
+        "re_safety_cutoff": 0.12411746249533917
+    }
+}

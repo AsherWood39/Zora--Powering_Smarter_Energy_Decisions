@@ -9,12 +9,12 @@ node_modules/
 npm-debug.log
 yarn-error.log
 
-# VS Code
+# Vs Code
 .vscode/
 data_planning.md
 Zora-DOC.md
 progress_checklist.md
-results/
+# results/  <-- Un-ignored for deployment
 /docs/*
 triage_out.json
 .env.production
