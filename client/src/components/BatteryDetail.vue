@@ -224,6 +224,7 @@ import { ref, onMounted, watch, nextTick } from 'vue';
 import axios from 'axios';
 import Chart from 'chart.js/auto';
 import annotationPlugin from 'chartjs-plugin-annotation';
+import api from '../api.js';
 
 Chart.register(annotationPlugin);
 
@@ -251,7 +252,7 @@ let chartInstance = null;
 // Fetch battery health on mount
 onMounted(async () => {
   try {
-    const res = await axios.get(`/api/battery/${props.batteryId}/health`);
+    const res = await axios.get(api.battery(props.batteryId));
     data.value = res.data;
     sliderTemp.value = res.data.temperature;
     simulatedRul.value = res.data.rul;
@@ -271,7 +272,7 @@ onMounted(async () => {
 watch(() => props.batteryId, async () => {
   loading.value = true;
   try {
-    const res = await axios.get(`/api/battery/${props.batteryId}/health`);
+    const res = await axios.get(api.battery(props.batteryId));
     data.value = res.data;
     sliderTemp.value = res.data.temperature;
     simulatedRul.value = res.data.rul;
@@ -305,7 +306,7 @@ const resetSimulation = () => {
 const fetchSimulation = async () => {
   try {
     const res = await axios.get(
-      `/api/battery/${props.batteryId}/simulate?temp=${sliderTemp.value}&load=${sliderLoad.value}&intensity=${sliderIntensity.value}`
+      `${api.simulate(props.batteryId)}?temp=${sliderTemp.value}&load=${sliderLoad.value}&intensity=${sliderIntensity.value}`
     );
     simResult.value = res.data;
     simulatedRul.value = res.data.adjusted_rul;
@@ -336,7 +337,7 @@ const fetchSimulation = async () => {
 };
 
 const handleExport = () => {
-  window.open(`/api/export/report?battery_id=${props.batteryId}`, '_blank');
+  window.open(api.report(props.batteryId), '_blank');
 };
 
 const renderChart = () => {
