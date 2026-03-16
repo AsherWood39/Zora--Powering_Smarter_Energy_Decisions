@@ -82,11 +82,11 @@
           </p>
           <div class="stats-mini">
             <div class="stat">
-              <span class="val">~3%</span>
+              <span class="val">{{ perf?.soh_mae || '~3' }}%</span>
               <span class="lbl">SoH MAE</span>
             </div>
             <div class="stat">
-              <span class="val">~4</span>
+              <span class="val">{{ perf?.rul_mae || '~4' }}</span>
               <span class="lbl">RUL MAE (Cycles)</span>
             </div>
           </div>
@@ -106,6 +106,27 @@
     </footer>
   </div>
 </template>
+
+<script setup>
+import { ref, onMounted } from 'vue';
+import axios from 'axios';
+import api from '../api.js';
+
+const perf = ref(null);
+
+const fetchPerformance = async () => {
+  try {
+    const res = await axios.get(api.analytics);
+    if (res.data && res.data.model_performance) {
+      perf.value = res.data.model_performance;
+    }
+  } catch (err) {
+    console.error('Failed to fetch model performance:', err);
+  }
+};
+
+onMounted(fetchPerformance);
+</script>
 
 <style scoped>
 .model-info-container {

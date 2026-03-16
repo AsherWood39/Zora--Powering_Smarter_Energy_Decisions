@@ -9,6 +9,12 @@ from dotenv import load_dotenv
 from groq import Groq
 import pickle
 from fpdf import FPDF
+import matplotlib
+import matplotlib.pyplot as plt
+import io
+
+# Use headless backend for server-side chart generation
+matplotlib.use('Agg')
 
 # --- REAL ML INTEGRATION ---
 # Use absolute paths that work in both local development and Vercel

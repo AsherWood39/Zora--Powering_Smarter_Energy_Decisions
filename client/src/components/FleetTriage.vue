@@ -123,7 +123,7 @@ onMounted(async () => {
 <style scoped>
 .fleet-container {
   padding: 0;
-  max-width: calc(100% - 80px); /* Leave room for FAB */
+  width: 100%;
 }
 
 .fleet-header {
