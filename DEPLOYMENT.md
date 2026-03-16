@@ -28,13 +28,16 @@ Vercel will build and host your Vue.js dashboard as a Single Page Application (S
 ### Steps:
 1. **GitHub Connection**: Go to [Vercel Dashboard](https://vercel.com/new) and import your repository.
 2. **Framework Preset**: Vercel should auto-detect **Vite**.
-3. **Build Settings**:
-   - Vercel will follow `vercel.json` instructions:
-     - **Build Command**: `cd client && npm install && npm run build`
-     - **Output Directory**: `client/dist`
-4. **Environment Variables**:
+3. **CRITICAL: Root Directory**: 
+   - In the "Build and Output Settings" during import, find the **Root Directory** setting.
+   - Click **Edit** and select the **`client`** folder.
+4. **Build Settings**:
+   - Vercel will follow `client/vercel.json` instructions:
+     - **Build Command**: `npm install && npm run build`
+     - **Output Directory**: `dist`
+5. **Environment Variables**:
    - Add `VITE_API_URL`: Set this to your **Render Backend URL** (e.g., `https://zora-backend.onrender.com`).
-5. **Deploy**: Click **Deploy**.
+6. **Deploy**: Click **Deploy**.
 
 ---
 
